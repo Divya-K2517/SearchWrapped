@@ -9,12 +9,12 @@ SRC      = src/main.cpp
 all: $(TARGET)
 
 $(TARGET): $(SRC) include/httplib.h include/json.hpp
-	@echo "Compiling C++ Search Wrapped backend..."
+	@echo "🔨 Compiling C++ Search Wrapped backend..."
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
-	@echo " Built: ./$(TARGET)"
+	@echo "✅ Built: ./$(TARGET)"
 
 run: $(TARGET)
-	@echo "Starting server at http://localhost:8080"
+	@echo "🚀 Starting server at http://localhost:8080"
 	./$(TARGET)
 
 clean:

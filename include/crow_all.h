@@ -1,0 +1,1 @@
+Host not in allowlist: release-assets.githubusercontent.com. Add this host to your network egress settings to allow access.

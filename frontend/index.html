@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Browser DNA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04080F;--bg2:#080F1E;--bg3:#0D1828;
+  --border:#152035;--border2:#1E3050;
+  --text:#E2EAFF;--text2:#7A90BB;--text3:#354060;
+  --cyan:#00C8F0;--cyan2:#0090C0;
+  --gold:#F5C842;--green:#00E090;--pink:#FF5C8D;--purple:#9B7EF0;
+  --red:#FF4040;
+}
+html,body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* ── SCANLINES overlay ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ────────────────────── UPLOAD ────────────────────── */
+#screen-upload{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:48px 24px;gap:32px;
+}
+.title-block{text-align:center}
+.title-eyebrow{
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--cyan);letter-spacing:0.3em;text-transform:uppercase;margin-bottom:16px;
+}
+.title-h{font-size:48px;font-weight:700;line-height:1;letter-spacing:-0.02em}
+.title-h span{
+  background:linear-gradient(90deg,var(--cyan),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.title-sub{font-size:15px;color:var(--text2);margin-top:8px;font-weight:400}
+
+.drop-zone{
+  border:1px solid var(--border2);border-radius:12px;
+  padding:48px 64px;cursor:pointer;transition:all 0.2s;text-align:center;
+  max-width:420px;width:100%;background:rgba(0,200,240,0.02);
+  position:relative;overflow:hidden;
+}
+.drop-zone::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at center,rgba(0,200,240,0.04) 0%,transparent 70%);
+  opacity:0;transition:opacity 0.3s;
+}
+.drop-zone:hover::before,.drop-zone.over::before{opacity:1}
+.drop-zone:hover,.drop-zone.over{border-color:var(--cyan)}
+.drop-icon{font-size:36px;margin-bottom:16px;display:block;filter:grayscale(0.3)}
+.drop-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.drop-sub{font-size:13px;color:var(--text3)}
+#file-input{display:none}
+
+.steps{
+  max-width:420px;width:100%;
+  background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px 24px;
+}
+.steps-title{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:12px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--cyan);min-width:20px;padding-top:1px}
+.step-text{font-size:13px;color:var(--text2);line-height:1.5}
+.step-text a{color:var(--cyan);text-decoration:none}
+.step-text a:hover{text-decoration:underline}
+
+.divider{color:var(--text3);font-size:12px;display:flex;align-items:center;gap:16px;width:100%;max-width:420px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+.btn-demo{
+  background:transparent;border:1px solid var(--border2);color:var(--text2);
+  padding:11px 28px;border-radius:8px;font-family:'Space Grotesk',sans-serif;
+  font-size:14px;cursor:pointer;transition:all 0.15s;letter-spacing:0.02em;
+}
+.btn-demo:hover{border-color:var(--cyan);color:var(--cyan)}
+
+.loading-wrap{display:none;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:420px}
+.loading-wrap.active{display:flex}
+.loading-bar{width:100%;height:2px;background:var(--border);border-radius:2px;overflow:hidden}
+.loading-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));width:30%;animation:sweep 1.4s ease-in-out infinite}
+@keyframes sweep{0%{margin-left:-30%;width:30%}50%{margin-left:35%;width:40%}100%{margin-left:100%;width:30%}}
+.loading-text{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--cyan);letter-spacing:0.1em}
+
+/* ────────────────────── WRAPPED ────────────────────── */
+#screen-wrapped{display:none;min-height:100vh}
+
+/* Fixed top bar */
+.top-bar{
+  position:fixed;top:0;left:0;right:0;height:3px;
+  background:var(--border);z-index:200;
+}
+.top-bar-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width 0.5s ease}
+
+.slide-nav-dots{
+  position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  display:flex;gap:7px;z-index:201;
+}
+.nav-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--border2);
+  transition:all 0.3s;cursor:pointer;
+}
+.nav-dot.active{background:var(--cyan);transform:scale(1.5)}
+.nav-dot.done{background:var(--cyan);opacity:0.35}
+
+.restart-btn{
+  position:fixed;top:10px;left:20px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--text3);background:transparent;border:none;cursor:pointer;
+  z-index:202;letter-spacing:0.05em;transition:color 0.15s;
+  padding:4px 8px;
+}
+.restart-btn:hover{color:var(--text)}
+
+/* SLIDE */
+.slide{
+  display:none;min-height:100vh;padding:80px 0 60px;
+  max-width:700px;margin:0 auto;
+  flex-direction:column;
+  animation:slideIn 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.slide.active{display:flex;padding-left:48px;padding-right:48px}
+@keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.nav-row{margin-top:auto;padding-top:40px;display:flex;justify-content:space-between;align-items:center}
+.btn-prev{background:transparent;border:1px solid var(--border);color:var(--text3);padding:10px 24px;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:14px;cursor:pointer;transition:all 0.15s}
+.btn-prev:hover{border-color:var(--text2);color:var(--text)}
+.btn-next{background:var(--cyan);border:1px solid var(--cyan);color:var(--bg);padding:10px 28px;border-radius:8px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.15s}
+.btn-next:hover{background:#33D8FF}
+
+/* ── TYPOGRAPHY ── */
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--cyan);letter-spacing:0.25em;text-transform:uppercase;margin-bottom:16px}
+.display{font-size:54px;font-weight:700;line-height:1.02;letter-spacing:-0.02em;margin-bottom:8px}
+.display .hl{color:var(--cyan)}
+.display .gd{color:var(--gold)}
+.h2{font-size:30px;font-weight:700;line-height:1.1;letter-spacing:-0.01em;margin-bottom:8px}
+.sub{font-size:16px;color:var(--text2);line-height:1.65;margin-bottom:24px}
+.mono{font-family:'JetBrains Mono',monospace}
+.num-huge{font-family:'JetBrains Mono',monospace;font-size:88px;font-weight:700;color:var(--cyan);line-height:1;letter-spacing:-0.04em}
+
+/* ── SLIDE 1: HERO ── */
+.search-anim{
+  display:flex;align-items:center;gap:12px;
+  background:var(--bg2);border:1px solid var(--border2);border-radius:100px;
+  padding:14px 22px;margin-top:20px;max-width:500px;
+}
+.g-dots{display:flex;gap:4px}
+.g-dot{width:9px;height:9px;border-radius:50%}
+#typed-q{font-size:14px;color:var(--text);flex:1;letter-spacing:0.01em}
+.caret{width:2px;height:17px;background:var(--cyan);animation:blink 0.85s step-end infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── SLIDE 2: TOP SITES ── */
+.sites-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px}
+.site-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:16px;position:relative;overflow:hidden;cursor:default;transition:border-color 0.2s;
+}
+.site-card:hover{border-color:var(--border2)}
+.site-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+}
+.site-rank{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em}
+.site-name{font-size:14px;font-weight:600;margin-bottom:4px;color:var(--text)}
+.site-cat{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+.site-visits{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--cyan)}
+.site-visits-label{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* ── SLIDE 3: SEARCHES ── */
+.rank-list{display:flex;flex-direction:column;gap:9px;margin-top:16px}
+.rank-row{
+  display:flex;align-items:center;gap:14px;
+  padding:13px 16px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:10px;transition:border-color 0.2s;
+}
+.rank-row:hover{border-color:var(--border2)}
+.rank-row.r1{border-color:rgba(245,200,66,0.25);background:rgba(245,200,66,0.04)}
+.rank-n{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text3);min-width:28px}
+.rank-row.r1 .rank-n{color:var(--gold)}
+.rank-q{font-size:14px;flex:1;color:var(--text2)}
+.rank-row.r1 .rank-q{color:var(--text);font-weight:500}
+.rank-c{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3)}
+.rank-bar-bg{width:60px;height:3px;background:var(--border);border-radius:3px;overflow:hidden}
+.rank-bar-fg{height:100%;background:var(--cyan);border-radius:3px}
+.rank-row.r1 .rank-bar-fg{background:var(--gold)}
+
+/* ── SLIDE 4: TIME ── */
+.heatmap{display:grid;grid-template-columns:repeat(12,1fr);gap:7px;margin-top:16px}
+.hm{
+  aspect-ratio:1;border-radius:5px;background:var(--bg2);
+  cursor:default;position:relative;transition:transform 0.15s;
+}
+.hm:hover{transform:scale(1.15);z-index:2}
+.hm::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:var(--bg3);border:1px solid var(--border2);
+  color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;
+  padding:4px 10px;border-radius:6px;white-space:nowrap;z-index:10;
+  opacity:0;pointer-events:none;transition:opacity 0.15s;
+}
+.hm:hover::after{opacity:1}
+
+.month-labels{display:grid;grid-template-columns:repeat(12,1fr);gap:7px;margin-top:6px}
+.ml{text-align:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)}
+
+.hour-wrap{margin-top:24px}
+.section-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:12px}
+.hour-chart{display:flex;align-items:flex-end;gap:3px;height:72px}
+.hour-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.hour-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px;background:rgba(0,200,240,0.25);transition:background 0.2s}
+.hour-bar.peak{background:var(--cyan)}
+.hour-bar.hi{background:rgba(0,200,240,0.55)}
+.hour-tick{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3)}
+
+.dow-wrap{margin-top:20px}
+.dow-chart{display:flex;gap:8px}
+.dow-col{flex:1;text-align:center}
+.dow-bar-outer{height:60px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:6px}
+.dow-bar-inner{width:100%;border-radius:4px 4px 0 0;min-height:3px;background:rgba(155,126,240,0.3)}
+.dow-bar-inner.peak{background:var(--purple)}
+.dow-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3)}
+
+/* ── SLIDE 5: CLUSTERS ── */
+.clusters-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.cluster-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  padding:18px;transition:border-color 0.2s;
+}
+.cluster-card:hover{border-color:var(--border2)}
+.cluster-icon{font-size:28px;margin-bottom:8px;display:block}
+.cluster-theme{font-size:14px;font-weight:600;margin-bottom:4px}
+.cluster-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);margin-bottom:10px}
+.cluster-queries{display:flex;flex-direction:column;gap:4px}
+.cq{
+  font-size:12px;color:var(--text3);padding:4px 8px;
+  background:rgba(255,255,255,0.025);border-radius:4px;border:1px solid var(--border);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ── SLIDE 6: STATS ── */
+.stats-bento{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.stat-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;
+}
+.stat-card.wide{grid-column:span 2}
+.stat-card.accent-c{border-color:rgba(0,200,240,0.25);background:rgba(0,200,240,0.035)}
+.stat-card.accent-g{border-color:rgba(245,200,66,0.25);background:rgba(245,200,66,0.035)}
+.stat-card.accent-p{border-color:rgba(155,126,240,0.25);background:rgba(155,126,240,0.035)}
+.stat-card.accent-k{border-color:rgba(255,92,141,0.25);background:rgba(255,92,141,0.035)}
+.stat-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:700;color:var(--cyan);line-height:1}
+.stat-card.accent-g .stat-val{color:var(--gold)}
+.stat-card.accent-p .stat-val{color:var(--purple)}
+.stat-card.accent-k .stat-val{color:var(--pink)}
+.stat-caption{font-size:12px;color:var(--text3);margin-top:5px;line-height:1.4}
+
+/* ── SLIDE 7: PERSONALITY ── */
+.arch-badge{
+  display:inline-flex;align-items:center;gap:14px;
+  border-radius:100px;padding:10px 26px 10px 10px;margin-bottom:20px;
+  border:1px solid rgba(0,200,240,0.2);background:rgba(0,200,240,0.04);
+}
+.arch-icon{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;background:rgba(0,200,240,0.08)}
+.arch-type{font-size:18px;font-weight:700}
+.arch-narrative{font-size:15px;color:var(--text2);line-height:1.75;max-width:540px;margin-bottom:24px}
+.evidence-list{display:flex;flex-wrap:wrap;gap:8px}
+.ev{
+  padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;
+  background:var(--bg2);border:1px solid var(--border);color:var(--text3);
+}
+
+/* ── SLIDE 8: SHARE ── */
+#slide-share{align-items:center;justify-content:center;text-align:center;gap:24px}
+.share-title{font-size:44px;font-weight:700;line-height:1.1}
+.share-title span{color:var(--cyan)}
+.terminal-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  padding:0;overflow:hidden;width:100%;max-width:420px;text-align:left;
+}
+.term-header{
+  background:var(--bg3);border-bottom:1px solid var(--border);
+  padding:10px 16px;display:flex;align-items:center;gap:8px;
+}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.term-title{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);margin-left:8px;letter-spacing:0.05em}
+.term-body{padding:20px 20px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text3);line-height:2}
+.term-body .key{color:var(--cyan)}
+.term-body .val{color:var(--text)}
+.btn-copy{
+  background:var(--cyan);color:var(--bg);border:none;
+  padding:13px 36px;border-radius:9px;
+  font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;
+  cursor:pointer;transition:background 0.15s;
+}
+.btn-copy:hover{background:#33D8FF}
+.footer-mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:0.08em}
+
+/* Responsive */
+@media(max-width:620px){
+  .slide.active{padding-left:24px;padding-right:24px}
+  .display{font-size:38px}
+  .num-huge{font-size:64px}
+  .sites-grid{grid-template-columns:1fr 1fr}
+  .stats-bento{grid-template-columns:1fr 1fr}
+  .stat-card.wide{grid-column:span 1}
+  .clusters-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ──────────── UPLOAD ──────────── -->
+<div id="screen-upload">
+  <div class="title-block">
+    <div class="title-eyebrow">◆ chrome history visualizer</div>
+    <h1 class="title-h">Browser<br><span>DNA</span></h1>
+    <p class="title-sub">Your browsing history, decoded.</p>
+  </div>
+
+  <div class="drop-zone" id="drop-zone">
+    <span class="drop-icon">🧬</span>
+    <div class="drop-title">Drop your History.json</div>
+    <div class="drop-sub">Chrome export · analyzed locally</div>
+    <input type="file" id="file-input" accept=".json">
+  </div>
+
+  <div class="loading-wrap" id="loading-wrap">
+    <div class="loading-bar"><div class="loading-fill"></div></div>
+    <span class="loading-text" id="loading-text">⚡ C++ engine parsing your data...</span>
+  </div>
+
+  <div class="divider">or</div>
+  <button class="btn-demo" id="btn-demo">✦ Run with demo data</button>
+
+  <div class="steps">
+    <div class="steps-title">How to export your data</div>
+    <div class="step">
+      <span class="step-num">01</span>
+      <span class="step-text">Open Chrome → Settings → <strong>You and Google</strong> → Sync</span>
+    </div>
+    <div class="step">
+      <span class="step-num">02</span>
+      <span class="step-text">Scroll to <strong>Export bookmarks and data</strong> → Export</span>
+    </div>
+    <div class="step">
+      <span class="step-num">03</span>
+      <span class="step-text">Find <code>Chrome/History.json</code> in the downloaded folder</span>
+    </div>
+    <div class="step">
+      <span class="step-num">04</span>
+      <span class="step-text">Drop it above. Data is sent only to <a href="#">localhost:8080</a> — never leaves your machine.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────── WRAPPED ──────────── -->
+<div id="screen-wrapped">
+  <div class="top-bar"><div class="top-bar-fill" id="top-bar-fill"></div></div>
+  <div class="slide-nav-dots" id="nav-dots"></div>
+  <button class="restart-btn" id="restart-btn">← restart</button>
+
+  <!-- S1: Hero -->
+  <div class="slide" id="slide-hero">
+    <div class="eyebrow" id="s1-eyebrow">◆ your browser dna</div>
+    <div class="display"><span class="hl" id="s1-count">0</span><br>browser visits.</div>
+    <div class="sub" id="s1-sub">One year. One browser. Infinite rabbit holes.</div>
+    <div class="search-anim">
+      <div class="g-dots">
+        <div class="g-dot" style="background:#4285F4"></div>
+        <div class="g-dot" style="background:#EA4335"></div>
+        <div class="g-dot" style="background:#FBBC05"></div>
+        <div class="g-dot" style="background:#34A853"></div>
+      </div>
+      <span id="typed-q"></span>
+      <span class="caret"></span>
+    </div>
+    <div class="nav-row">
+      <button class="btn-prev" disabled>← prev</button>
+      <button class="btn-next" onclick="go(1)">top sites →</button>
+    </div>
+  </div>
+
+  <!-- S2: Top Sites -->
+  <div class="slide" id="slide-sites">
+    <div class="eyebrow">◆ where you actually live on the internet</div>
+    <div class="h2">Your most visited sites.</div>
+    <div class="sub">These URLs know you better than you'd like.</div>
+    <div class="sites-grid" id="sites-grid"></div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">searches →</button>
+    </div>
+  </div>
+
+  <!-- S3: Top Searches -->
+  <div class="slide" id="slide-searches">
+    <div class="eyebrow">◆ what you typed into the void</div>
+    <div class="h2">Your most searched queries.</div>
+    <div class="sub">The things you needed answers for — again and again.</div>
+    <div class="rank-list" id="rank-list"></div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">when you browsed →</button>
+    </div>
+  </div>
+
+  <!-- S4: Time patterns -->
+  <div class="slide" id="slide-time">
+    <div class="eyebrow">◆ your browsing rhythm</div>
+    <div class="h2">When you were online.</div>
+    <div class="sub">Peak month: <strong id="s4-peak-mo" style="color:var(--cyan)">—</strong>&nbsp;&nbsp;Peak hour: <strong id="s4-peak-hr" style="color:var(--cyan)">—</strong>&nbsp;&nbsp;Busiest day: <strong id="s4-peak-dow" style="color:var(--cyan)">—</strong></div>
+    <div class="heatmap" id="heatmap"></div>
+    <div class="month-labels">
+      <span class="ml">Jan</span><span class="ml">Feb</span><span class="ml">Mar</span>
+      <span class="ml">Apr</span><span class="ml">May</span><span class="ml">Jun</span>
+      <span class="ml">Jul</span><span class="ml">Aug</span><span class="ml">Sep</span>
+      <span class="ml">Oct</span><span class="ml">Nov</span><span class="ml">Dec</span>
+    </div>
+    <div class="hour-wrap">
+      <div class="section-label">searches by hour of day</div>
+      <div class="hour-chart" id="hour-chart"></div>
+    </div>
+    <div class="dow-wrap">
+      <div class="section-label">activity by day of week</div>
+      <div class="dow-chart" id="dow-chart"></div>
+    </div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">topic clusters →</button>
+    </div>
+  </div>
+
+  <!-- S5: Clusters -->
+  <div class="slide" id="slide-clusters">
+    <div class="eyebrow">◆ what your mind keeps circling</div>
+    <div class="h2">Your search clusters.</div>
+    <div class="sub" id="s5-sub">The recurring obsessions, grouped.</div>
+    <div class="clusters-grid" id="clusters-grid"></div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">by the numbers →</button>
+    </div>
+  </div>
+
+  <!-- S6: Stats -->
+  <div class="slide" id="slide-stats">
+    <div class="eyebrow">◆ by the numbers</div>
+    <div class="h2">The cold hard data.</div>
+    <div class="stats-bento" id="stats-bento"></div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">your archetype →</button>
+    </div>
+  </div>
+
+  <!-- S7: Personality -->
+  <div class="slide" id="slide-arch">
+    <div class="eyebrow">◆ your browser archetype</div>
+    <div class="arch-badge" id="arch-badge">
+      <div class="arch-icon" id="arch-icon"></div>
+      <div class="arch-type" id="arch-type"></div>
+    </div>
+    <div class="h2" id="arch-tagline"></div>
+    <div class="arch-narrative" id="arch-narrative"></div>
+    <div class="evidence-list" id="evidence-list"></div>
+    <div class="nav-row">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="go(1)">your card →</button>
+    </div>
+  </div>
+
+  <!-- S8: Share -->
+  <div class="slide" id="slide-share">
+    <div class="share-title">You are:<br><span id="share-arch">—</span></div>
+    <div class="terminal-card">
+      <div class="term-header">
+        <div class="term-dot" style="background:#FF5F57"></div>
+        <div class="term-dot" style="background:#FFBC2E"></div>
+        <div class="term-dot" style="background:#28C840"></div>
+        <span class="term-title">browser_dna.txt</span>
+      </div>
+      <div class="term-body" id="term-body"></div>
+    </div>
+    <button class="btn-copy" id="btn-copy">Copy card</button>
+    <div class="footer-mono">browser dna · C++ engine · made with Claude</div>
+    <div class="nav-row" style="width:100%;max-width:420px">
+      <button class="btn-prev" onclick="go(-1)">← prev</button>
+      <button class="btn-next" onclick="document.getElementById('restart-btn').click()">restart ↺</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8080';
+const SLIDES = ['slide-hero','slide-sites','slide-searches','slide-time','slide-clusters','slide-stats','slide-arch','slide-share'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+let data = null;
+let cur  = 0;
+
+// ── NAV ────────────────────────────────────
+function go(delta) {
+  const next = cur + delta;
+  if (next < 0 || next >= SLIDES.length) return;
+  document.getElementById(SLIDES[cur]).classList.remove('active');
+  cur = next;
+  document.getElementById(SLIDES[cur]).classList.add('active');
+  updateUI();
+  if (cur === 0) startTypewriter();
+}
+
+document.addEventListener('keydown', e => {
+  if (!data) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   go(-1);
+});
+
+function updateUI() {
+  const pct = (cur + 1) / SLIDES.length * 100;
+  document.getElementById('top-bar-fill').style.width = pct + '%';
+  const dots = document.querySelectorAll('.nav-dot');
+  dots.forEach((d, i) => {
+    d.className = 'nav-dot' + (i === cur ? ' active' : i < cur ? ' done' : '');
+  });
+}
+
+// ── TYPEWRITER ──────────────────────────────
+function startTypewriter() {
+  if (!data?.top_searches?.length) return;
+  const q  = data.top_searches[0].query;
+  const el = document.getElementById('typed-q');
+  el.textContent = '';
+  let i = 0;
+  const t = setInterval(() => {
+    if (i < q.length) el.textContent += q[i++];
+    else clearInterval(t);
+  }, 60);
+}
+
+// ── RENDER ──────────────────────────────────
+function render(d) {
+  data = d;
+
+  // Init nav dots
+  const dotsEl = document.getElementById('nav-dots');
+  dotsEl.innerHTML = '';
+  SLIDES.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot';
+    dot.onclick = () => { document.getElementById(SLIDES[cur]).classList.remove('active'); cur = i; document.getElementById(SLIDES[cur]).classList.add('active'); updateUI(); };
+    dotsEl.appendChild(dot);
+  });
+
+  // S1
+  const totalLabel = d.total_visits.toLocaleString();
+  document.getElementById('s1-count').textContent = totalLabel;
+  const range = d.year_start === d.year_end ? String(d.year_start) : `${d.year_start}–${d.year_end}`;
+  document.getElementById('s1-eyebrow').textContent = `◆ browser dna · ${range}`;
+  document.getElementById('s1-sub').textContent = `${d.unique_domains.toLocaleString()} unique domains. ${d.total_searches.toLocaleString()} Google searches. Zero secrets.`;
+
+  // S2: Top sites
+  const sg = document.getElementById('sites-grid');
+  sg.innerHTML = '';
+  d.top_sites.slice(0,9).forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'site-card';
+    card.style.setProperty('--c', s.color);
+    card.style.cssText += `;border-top-color:${s.color}40`;
+    card.innerHTML = `
+      <div class="site-card" style="border-top:2px solid ${s.color}50;padding:16px;background:var(--bg2);border-radius:10px;border:1px solid var(--border)">
+        <div class="site-rank">${String(i+1).padStart(2,'0')} · ${s.category.toUpperCase()}</div>
+        <div class="site-name">${s.label}</div>
+        <div class="site-visits" style="color:${s.color}">${s.visits.toLocaleString()}</div>
+        <div class="site-visits-label">visits</div>
+      </div>
+    `;
+    // replace card with inner
+    const inner = card.firstElementChild;
+    sg.appendChild(inner);
+  });
+
+  // S3: Searches
+  const rl = document.getElementById('rank-list');
+  rl.innerHTML = '';
+  const maxC = d.top_searches[0]?.count || 1;
+  d.top_searches.slice(0,8).forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'rank-row' + (i === 0 ? ' r1' : '');
+    row.innerHTML = `
+      <span class="rank-n">${String(i+1).padStart(2,'0')}</span>
+      <span class="rank-q">${s.query}</span>
+      <span class="rank-c">×${s.count}</span>
+      <div class="rank-bar-bg"><div class="rank-bar-fg" style="width:${Math.round(s.count/maxC*100)}%"></div></div>
+    `;
+    rl.appendChild(row);
+  });
+
+  // S4: Time
+  document.getElementById('s4-peak-mo').textContent  = d.peak_month;
+  document.getElementById('s4-peak-hr').textContent  = d.peak_hour;
+  document.getElementById('s4-peak-dow').textContent = d.peak_day;
+
+  const hg = document.getElementById('heatmap');
+  hg.innerHTML = '';
+  const maxMo = Math.max(...d.month_counts, 1);
+  const hmColors = ['#0D1828','#0A3050','#0A5888','#0080B8','#00C8F0'];
+  d.month_counts.forEach((c, i) => {
+    const lv = c === 0 ? 0 : Math.min(4, Math.ceil(c / maxMo * 5));
+    const cell = document.createElement('div');
+    cell.className = 'hm';
+    cell.style.background = hmColors[lv];
+    cell.setAttribute('data-tip', `${MONTHS[i]}: ${c.toLocaleString()}`);
+    hg.appendChild(cell);
+  });
+
+  const hc = document.getElementById('hour-chart');
+  hc.innerHTML = '';
+  const maxHr = Math.max(...d.hour_counts, 1);
+  const peakHr = d.hour_counts.indexOf(maxHr);
+  d.hour_counts.forEach((c, i) => {
+    const pct = Math.max(2, Math.round(c / maxHr * 100));
+    const show = (i % 6 === 0);
+    const lbl  = i === 0 ? '12a' : i < 12 ? i+'a' : i === 12 ? '12p' : (i-12)+'p';
+    const col  = document.createElement('div');
+    col.className = 'hour-col';
+    const cls = i === peakHr ? 'peak' : (c / maxHr > 0.6 ? 'hi' : '');
+    col.innerHTML = `<div class="hour-bar ${cls}" style="height:${pct}%"></div><span class="hour-tick">${show ? lbl : ''}</span>`;
+    hc.appendChild(col);
+  });
+
+  const dc = document.getElementById('dow-chart');
+  dc.innerHTML = '';
+  const maxDow  = Math.max(...d.dow_counts, 1);
+  const peakDow = d.dow_counts.indexOf(maxDow);
+  d.dow_counts.forEach((c, i) => {
+    const pct = Math.max(3, Math.round(c / maxDow * 56));
+    const col = document.createElement('div');
+    col.className = 'dow-col';
+    col.innerHTML = `<div class="dow-bar-outer"><div class="dow-bar-inner${i===peakDow?' peak':''}" style="height:${pct}px"></div></div><div class="dow-label">${DAYS[i]}</div>`;
+    dc.appendChild(col);
+  });
+
+  // S5: Clusters
+  document.getElementById('s5-sub').textContent = `Top cluster: ${d.clusters[0]?.theme || '—'} (${d.clusters[0]?.total || 0} searches)`;
+  const cg = document.getElementById('clusters-grid');
+  cg.innerHTML = '';
+  d.clusters.slice(0,6).forEach(cl => {
+    const card = document.createElement('div');
+    card.className = 'cluster-card';
+    const qs = cl.queries.map(q => `<div class="cq">${q}</div>`).join('');
+    card.innerHTML = `
+      <span class="cluster-icon">${cl.icon}</span>
+      <div class="cluster-theme">${cl.theme}</div>
+      <div class="cluster-count mono">${cl.total} searches</div>
+      <div class="cluster-queries">${qs}</div>
+    `;
+    cg.appendChild(card);
+  });
+
+  // S6: Stats
+  const peakMoIdx = d.month_counts.indexOf(Math.max(...d.month_counts));
+  const sb = document.getElementById('stats-bento');
+  sb.innerHTML = '';
+  const statsRows = [
+    {label:'Night owl %',    val: d.night_owl_pct+'%',         cap:'searches after 11pm',             cls:'accent-p'},
+    {label:'Daily visits',   val: d.visits_per_day.toFixed(1), cap:'avg page views per day',          cls:''},
+    {label:'Peak hour',      val: d.peak_hour,                 cap:'when you browse most',            cls:'accent-g'},
+    {label:'Total searches', val: d.total_searches.toLocaleString(), cap:'Google queries made',       cls:'accent-c wide'},
+    {label:'Unique domains', val: d.unique_domains.toLocaleString(), cap:'different sites visited',   cls:''},
+    {label:'Question searches', val: d.question_count.toLocaleString(), cap:'started with how/why/what', cls:'accent-k'},
+    {label:'Avg query words',val: d.avg_query_words.toFixed(1),cap:'words per Google search',         cls:''},
+    {label:'Searches/day',   val: d.searches_per_day.toFixed(1),cap:'daily search rate',             cls:'accent-c'},
+    {label:'Longest query',  val: d.longest_query_words+'w',   cap:`"${d.longest_query.slice(0,22)}…"`, cls:''},
+  ];
+  statsRows.forEach(s => {
+    const card = document.createElement('div');
+    card.className = `stat-card ${s.cls}`;
+    card.innerHTML = `<div class="stat-label">${s.label}</div><div class="stat-val">${s.val}</div><div class="stat-caption">${s.cap}</div>`;
+    sb.appendChild(card);
+  });
+
+  // S7: Personality
+  const p = d.personality;
+  document.getElementById('arch-icon').textContent  = p.icon;
+  document.getElementById('arch-type').textContent  = p.archetype;
+  document.getElementById('arch-type').style.color  = p.color;
+  document.getElementById('arch-badge').style.borderColor = p.color + '40';
+  document.getElementById('arch-badge').style.background  = p.color + '08';
+  document.getElementById('arch-icon').style.background   = p.color + '15';
+  document.getElementById('arch-tagline').textContent  = p.tagline;
+  document.getElementById('arch-narrative').textContent = p.narrative;
+  const el = document.getElementById('evidence-list');
+  el.innerHTML = '';
+  p.evidence.forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'ev';
+    div.textContent = e;
+    el.appendChild(div);
+  });
+
+  // S8: Share
+  document.getElementById('share-arch').textContent = p.archetype;
+  document.getElementById('share-arch').style.color = p.color;
+  document.getElementById('term-body').innerHTML = `
+    <span class="key">archetype</span>   <span class="val">${p.archetype}</span><br>
+    <span class="key">total_visits</span> <span class="val">${d.total_visits.toLocaleString()}</span><br>
+    <span class="key">searches</span>    <span class="val">${d.total_searches.toLocaleString()}</span><br>
+    <span class="key">domains</span>     <span class="val">${d.unique_domains.toLocaleString()}</span><br>
+    <span class="key">peak_hour</span>   <span class="val">${d.peak_hour}</span><br>
+    <span class="key">night_owl</span>   <span class="val">${d.night_owl_pct}%</span><br>
+    <span class="key">top_site</span>    <span class="val">${d.top_sites[0]?.label || '—'}</span><br>
+    <span class="key">top_search</span>  <span class="val">"${d.top_searches[0]?.query || '—'}"</span>
+  `;
+
+  // Show
+  document.getElementById('screen-upload').style.display   = 'none';
+  document.getElementById('screen-wrapped').style.display  = 'block';
+  document.getElementById(SLIDES[cur]).classList.add('active');
+  updateUI();
+  setTimeout(startTypewriter, 400);
+}
+
+// ── COPY ────────────────────────────────────
+document.getElementById('btn-copy').addEventListener('click', () => {
+  if (!data) return;
+  const p = data.personality;
+  const text = [
+    `Browser DNA`,
+    `archetype:    ${p.archetype}`,
+    `total_visits: ${data.total_visits.toLocaleString()}`,
+    `searches:     ${data.total_searches.toLocaleString()}`,
+    `domains:      ${data.unique_domains.toLocaleString()}`,
+    `peak_hour:    ${data.peak_hour}`,
+    `night_owl:    ${data.night_owl_pct}%`,
+    `top_site:     ${data.top_sites[0]?.label || '—'}`,
+    `top_search:   "${data.top_searches[0]?.query || '—'}"`,
+    `#BrowserDNA`,
+  ].join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = 'Copy card', 2000);
+  });
+});
+
+// ── UPLOAD ──────────────────────────────────
+function setLoading(on, msg) {
+  document.getElementById('loading-wrap').classList.toggle('active', on);
+  if (msg) document.getElementById('loading-text').textContent = msg;
+}
+
+async function upload(file) {
+  setLoading(true, '⚡ C++ engine parsing your data...');
+  try {
+    const text = await file.text();
+    const body = JSON.parse(text);
+    const res  = await fetch(`${API}/api/analyze`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await res.json();
+    if (d.error) { alert('Error: ' + d.error); return; }
+    render(d);
+  } catch(e) {
+    alert('Could not reach C++ backend (localhost:8080). Is it running?\n\nRun: ./start.sh\n\nOr try demo data.');
+  } finally { setLoading(false); }
+}
+
+const dz = document.getElementById('drop-zone');
+const fi = document.getElementById('file-input');
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); });
+fi.addEventListener('change', e => { if(e.target.files[0]) upload(e.target.files[0]); });
+
+document.getElementById('btn-demo').addEventListener('click', async () => {
+  setLoading(true, '⚡ Generating demo profile...');
+  try {
+    const d = await (await fetch(`${API}/api/demo`)).json();
+    render(d);
+  } catch(e) { alert('Cannot reach C++ backend at localhost:8080. Run: ./start.sh'); }
+  finally { setLoading(false); }
+});
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+  cur = 0;
+  document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-wrapped').style.display = 'none';
+  document.getElementById('screen-upload').style.display  = 'flex';
+  data = null;
+});
+</script>
+</body>
+</html>
