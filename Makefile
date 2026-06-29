@@ -1,6 +1,6 @@
 CXX      = g++
 CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -I./include
-LDFLAGS  = -lpthread
+LDFLAGS  = -lpthread -lws2_32
 TARGET   = search_wrapped_server
 SRC      = src/main.cpp
 

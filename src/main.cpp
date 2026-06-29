@@ -56,6 +56,13 @@ struct PersonalityResult {
     std::string narrative;
     std::vector<std::string> evidence;
     std::string color;
+    // Cosine similarity fields
+    double match_pct = 0.0;                  // 0-100 confidence
+    std::string shadow_archetype;            // second-closest
+    std::string shadow_icon;
+    double shadow_pct = 0.0;
+    std::vector<double> radar;               // 8 normalized dimension scores for chart
+    std::vector<std::string> radar_labels;
 };
 
 struct WrappedResult {
@@ -99,6 +106,9 @@ struct WrappedResult {
     double visits_per_day;
     int binge_sessions;        // sessions > 30 consecutive minutes
     std::string alter_ego;     // based on peak hour label
+
+    // TF-IDF fingerprint — top terms that define this user's search DNA
+    std::vector<std::pair<std::string,double>> tfidf_terms; // (word, score)
 };
 
 // ══════════════════════════════════════════════════════════
@@ -287,6 +297,320 @@ std::vector<HistoryEntry> parse_history(const json& root) {
 
     return entries;
 }
+
+// ══════════════════════════════════════════════════════════
+//  TF-IDF SEARCH FINGERPRINT ENGINE
+//
+//  Each unique search query is treated as a "document".
+//  TF  = fraction of times this term appears across all queries
+//  IDF = log(N / df) where df = number of queries containing the term,
+//        floored by a general-English prior so ultra-common words stay low
+//        even if they appear in every query.
+//
+//  Terms are tokenized (alpha only, ≥3 chars), stop-word filtered, then
+//  ranked by TF * IDF. The top results are words statistically unique to
+//  THIS user — their search DNA.
+// ══════════════════════════════════════════════════════════
+
+static const std::set<std::string> STOPWORDS = {
+    "the","and","for","that","this","with","are","was","have","from",
+    "not","but","you","your","they","what","how","why","when","where",
+    "who","which","can","does","did","will","would","could","should",
+    "its","has","had","been","more","also","into","than","then","them",
+    "about","some","there","their","here","just","like","get","use",
+    "using","used","make","best","good","need","want","all","any","new",
+    "one","two","three","first","last","long","time","year","day","way",
+    "com","www","http","https","org","net","app","top","list","find",
+    "google","search","result","site","page","link","free","online",
+    "download","install","review","price","buy","near","open","hours"
+};
+
+static std::vector<std::string> tokenize_query(const std::string& s) {
+    std::vector<std::string> tokens;
+    std::string cur;
+    for (char c : s) {
+        if (std::isalpha((unsigned char)c)) {
+            cur += std::tolower((unsigned char)c);
+        } else {
+            if (cur.size() >= 3 && !STOPWORDS.count(cur)) tokens.push_back(cur);
+            cur.clear();
+        }
+    }
+    if (cur.size() >= 3 && !STOPWORDS.count(cur)) tokens.push_back(cur);
+    return tokens;
+}
+
+// General English word frequency prior: log(corpus_size / estimated_df_in_web_corpus)
+// Calibrated so domain-specific terms score much higher than generic English.
+// Words not in this table get idf_prior = log(1000) ≈ 6.9 (rare/technical).
+static const std::unordered_map<std::string,double> IDF_PRIOR = {
+    {"algorithm",5.2},{"leetcode",7.5},{"python",4.8},{"javascript",4.9},
+    {"typescript",5.4},{"react",5.1},{"backend",5.3},{"frontend",5.2},
+    {"internship",5.8},{"resume",5.5},{"linkedin",5.6},{"glassdoor",6.2},
+    {"salary",5.4},{"recruiter",6.0},{"interview",5.2},{"leetcode",7.5},
+    {"github",5.3},{"stackoverflow",6.1},{"recursion",5.9},{"binary",5.0},
+    {"sorting",5.5},{"dynamic",4.9},{"programming",4.7},{"structure",4.6},
+    {"calories",5.1},{"recipe",4.8},{"nutrition",5.2},{"protein",5.0},
+    {"restaurant",4.7},{"paneer",7.2},{"subway",5.8},{"workout",5.3},
+    {"fitness",5.1},{"exercise",5.0},{"running",4.9},{"trail",5.6},
+    {"hiking",5.7},{"spotify",5.8},{"netflix",5.5},{"youtube",4.5},
+    {"concert",5.6},{"ticket",5.3},{"anime",5.9},{"playlist",5.7},
+    {"climate",5.3},{"election",5.4},{"policy",5.2},{"research",4.8},
+    {"science",4.7},{"history",4.6},{"explained",5.0},{"study",4.8},
+    {"purdue",7.8},{"brightspace",7.9},{"gradescope",7.9},{"piazza",7.1},
+    {"professor",5.4},{"midterm",6.2},{"assignment",5.3},{"gpa",6.5},
+    {"amazon",4.9},{"shipping",5.1},{"discount",5.3},{"shein",6.8},
+    {"aeropostale",7.2},{"etsy",6.3},{"review",4.6},{"comparison",5.0},
+};
+
+std::vector<std::pair<std::string,double>> compute_tfidf(
+    const std::unordered_map<std::string,int>& query_freq,
+    int total_queries
+) {
+    if (total_queries == 0) return {};
+
+    // Step 1: term frequencies across all queries (treat corpus as one doc per unique query)
+    std::unordered_map<std::string, int> term_total_tf;  // sum of occurrences across corpus
+    std::unordered_map<std::string, int> term_df;        // # queries containing this term
+    int total_terms = 0;
+
+    for (const auto& [q, freq] : query_freq) {
+        auto tokens = tokenize_query(q);
+        std::set<std::string> seen_in_query;
+        for (const auto& tok : tokens) {
+            term_total_tf[tok] += freq; // weight by how often the query was searched
+            total_terms += freq;
+            if (!seen_in_query.count(tok)) {
+                term_df[tok]++;
+                seen_in_query.insert(tok);
+            }
+        }
+    }
+
+    if (total_terms == 0) return {};
+
+    // Step 2: score each term
+    double N = (double)query_freq.size();
+    std::vector<std::pair<std::string,double>> scored;
+
+    for (const auto& [term, tf_raw] : term_total_tf) {
+        double tf = (double)tf_raw / total_terms;
+
+        // IDF: use user's corpus first, then blend with general-English prior
+        int df = term_df.count(term) ? term_df[term] : 1;
+        double idf_corpus = std::log((N + 1.0) / (df + 0.5));
+
+        // Blend with prior: if term is common in English, penalize it
+        double idf_prior = 6.9; // default: rare/unknown
+        auto it = IDF_PRIOR.find(term);
+        if (it != IDF_PRIOR.end()) idf_prior = it->second;
+
+        // Geometric blend — corpus IDF floors out common terms, prior lifts domain terms
+        double idf = 0.6 * idf_corpus + 0.4 * idf_prior;
+
+        scored.push_back({term, tf * idf * 1000.0}); // scale for readability
+    }
+
+    // Step 3: sort, keep top 14
+    std::sort(scored.begin(), scored.end(), [](const auto& a, const auto& b){
+        return a.second > b.second;
+    });
+    if (scored.size() > 14) scored.resize(14);
+    return scored;
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  COSINE SIMILARITY ARCHETYPE ENGINE
+//
+//  User behavior is embedded as a normalized float vector:
+//    dims[0..7] = category scores (Job, Code, School, Food, Fitness, Shop, Entmt, News)
+//    dims[8]    = night_owl fraction (0-1)
+//    dims[9]    = weekend fraction (0-1)
+//    dims[10]   = question ratio (questions / total_searches)
+//    dims[11]   = avg_query_words normalized (÷8)
+//    dims[12]   = peak_hour_slot (0=morning, 0.5=afternoon, 1=night)
+//
+//  Each archetype is a hand-tuned ideal vector. Similarity = dot(u,a) / (|u||a|).
+//  Returns best match + confidence %, plus shadow archetype (second closest).
+// ══════════════════════════════════════════════════════════
+
+struct ArchetypeSpec {
+    std::string name;
+    std::string icon;
+    std::string tagline;
+    std::string narrative;
+    std::vector<std::string> evidence;
+    std::string color;
+    std::vector<double> vec; // 13-dim ideal vector
+    // dims: job, code, school, food, fitness, shop, entmt, news,
+    //       night_owl, weekend, question_ratio, query_words_norm, peak_slot
+};
+
+static const std::vector<ArchetypeSpec> ARCHETYPES = {
+    {
+        "The Midnight Coder", "⌨️",
+        "Ships code while the world sleeps.",
+        "Your search fingerprint doesn't lie: LeetCode, GitHub, and algorithm deep-dives clustered in the small hours. You've essentially built a second CS education inside your browser history. The dark mode isn't a preference — it's a lifestyle.",
+        {"LeetCode at 2am is normal", "Algorithm rabbit holes", "README completionist", "Commits before sunrise", "Stack Overflow power user"},
+        "#FFA116",
+        {0.3, 0.9, 0.4, 0.1, 0.1, 0.05, 0.1, 0.15,  0.85, 0.2, 0.35, 0.7, 0.9}
+    },
+    {
+        "The Ambitious Applicant", "🎯",
+        "LinkedIn is basically your second home.",
+        "Career, career, career. The ratio of job-hunt searches to everything else is a tell: you're not casually browsing — you're executing a strategy. Glassdoor salary checks, recruiter names, tailored cover letters. You're building a launchpad, not just finding a job.",
+        {"Knows the recruiter's name", "Salary research at midnight", "Open to opportunities (always)", "Tailors every cover letter", "Job alert inbox: chaos"},
+        "#0A66C2",
+        {0.95, 0.5, 0.4, 0.1, 0.1, 0.1, 0.1, 0.2,  0.5, 0.3, 0.3, 0.5, 0.6}
+    },
+    {
+        "The Scholar", "📚",
+        "Studying isn't a phase — it's a personality.",
+        "Your browser history reads like a course syllabus. Brightspace, Gradescope, Piazza — the academic stack lives in your top sites. You search with the intent of someone who actually wants to understand, not just pass. The question ratio gives you away.",
+        {"Brightspace daily driver", "Reads the actual paper", "Piazza before asking prof", "GPA tracker installed", "Highlights digital PDFs"},
+        "#CEB888",
+        {0.2, 0.5, 0.95, 0.2, 0.2, 0.05, 0.15, 0.5,  0.4, 0.25, 0.7, 0.8, 0.5}
+    },
+    {
+        "The Balanced Optimizer", "⚖️",
+        "Counts macros. Still orders the samosa.",
+        "A beautiful contradiction lives in your data: calorie tracking side-by-side with restaurant menus, workout schedules next to recipe searches. You approach both fitness and food with the same analytical rigor — but you know when to put the spreadsheet down and just eat.",
+        {"Meal preps on Sunday", "Knows the macro of everything", "Still gets the dessert", "Gym schedule > social calendar", "Dutch Bros is non-negotiable"},
+        "#00E5A0",
+        {0.1, 0.2, 0.3, 0.75, 0.85, 0.1, 0.2, 0.2,  0.3, 0.55, 0.4, 0.55, 0.4}
+    },
+    {
+        "The Culinary Curator", "🍜",
+        "Every search is a flavor quest.",
+        "Food is not sustenance — it's research. Recipes, nutrition panels, restaurant menus, delivery apps, ingredient substitutions. Your search history is essentially a food journal curated by someone who takes eating seriously. Others browse for fun. You browse hungry.",
+        {"Reads menus before deciding", "Has a ranking for every spot", "Recipe bookmarker, rare cooker", "Calorie-aware, not calorie-stopped", "Knows the secret menu"},
+        "#FFD166",
+        {0.05, 0.1, 0.2, 0.95, 0.35, 0.2, 0.3, 0.15,  0.35, 0.5, 0.3, 0.5, 0.45}
+    },
+    {
+        "The Night Browser", "🌙",
+        "The internet is quieter at 3am.",
+        "Peak activity: well past midnight. Whether it's NYT rabbit holes, 30-tab YouTube spirals, or regrettable online shopping, you've found that your best and worst browsing decisions happen when the rest of the world is asleep. No judgement. The algorithm knows.",
+        {"Adds to cart at 2am", "NYT at midnight hits different", "Tomorrow's problem: tomorrow", "Tabs: always too many", "Sleep schedule: fluid"},
+        "#A78BFA",
+        {0.1, 0.2, 0.15, 0.3, 0.15, 0.4, 0.6, 0.4,  0.95, 0.35, 0.3, 0.45, 0.95}
+    },
+    {
+        "The Informed Citizen", "📰",
+        "You actually read past the headline.",
+        "News, research, explainers — your search history has a higher question-word density than almost any other archetype. You don't just consume; you verify. NYTimes, Wikipedia rabbit holes, academic sources. In an era of hot takes, you want the actual context.",
+        {"Reads the full article", "Cross-references sources", "Wikipedia: starting point, not end", "Sends people links as gifts", "Knows the backstory"},
+        "#00C8F0",
+        {0.1, 0.2, 0.35, 0.15, 0.2, 0.05, 0.2, 0.95,  0.4, 0.3, 0.8, 0.75, 0.4}
+    },
+    {
+        "The Renaissance Browser", "🌐",
+        "You contain multitudes.",
+        "No single obsession dominates your history — and that's rare data. Code, food, school, news, fitness, shopping: you move between domains with the fluidity of someone who refuses to be categorized. The cosine similarity engine had to think hard. You're genuinely hard to pin down.",
+        {"Context-switches effortlessly", "Tabs span 6 different topics", "No algorithmic bubble", "Curious about everything", "Unpredictable, in the best way"},
+        "#FF6B9D",
+        {0.4, 0.4, 0.4, 0.4, 0.4, 0.35, 0.4, 0.4,  0.45, 0.45, 0.5, 0.55, 0.5}
+    },
+};
+
+static double cosine_sim(const std::vector<double>& a, const std::vector<double>& b) {
+    double dot = 0, na = 0, nb = 0;
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) {
+        dot += a[i] * b[i];
+        na  += a[i] * a[i];
+        nb  += b[i] * b[i];
+    }
+    if (na < 1e-9 || nb < 1e-9) return 0.0;
+    return dot / (std::sqrt(na) * std::sqrt(nb));
+}
+
+PersonalityResult compute_personality_cosine(
+    const std::vector<std::pair<std::string,int>>& cats,
+    double night_owl_frac,   // 0-1
+    double weekend_frac,     // 0-1
+    int question_count,
+    int total_searches,
+    int peak_hour            // 0-23
+) {
+    // Build category score map, normalize to 0-1
+    std::unordered_map<std::string,double> cm;
+    double cat_max = 1.0;
+    for (const auto& [n, s] : cats) {
+        cm[n] = (double)s;
+        if ((double)s > cat_max) cat_max = (double)s;
+    }
+
+    static const std::vector<std::string> CAT_ORDER = {
+        "Job Hunting","Coding & Tech","School","Food & Nutrition",
+        "Health & Fitness","Shopping","Entertainment","News & Research"
+    };
+    static const std::vector<std::string> RADAR_LABELS = {
+        "Career","Code","School","Food","Fitness","Shopping","Entertainment","Research"
+    };
+
+    std::vector<double> user_vec;
+    std::vector<double> radar_raw;
+    for (const auto& cat : CAT_ORDER) {
+        double v = cm.count(cat) ? cm[cat] / cat_max : 0.0;
+        user_vec.push_back(v);
+        radar_raw.push_back(v);
+    }
+
+    double q_ratio = total_searches > 0 ? (double)question_count / total_searches : 0.0;
+    // peak_hour slot: 0=morning(5-11), 0.5=afternoon(12-18), 1=night(19-4)
+    double peak_slot;
+    if (peak_hour >= 5  && peak_hour <= 11) peak_slot = 0.0;
+    else if (peak_hour >= 12 && peak_hour <= 18) peak_slot = 0.5;
+    else peak_slot = 1.0;
+
+    user_vec.push_back(night_owl_frac);
+    user_vec.push_back(weekend_frac);
+    user_vec.push_back(q_ratio);
+    user_vec.push_back(std::min(1.0, q_ratio * 2.0)); // query_words placeholder (normalized)
+    user_vec.push_back(peak_slot);
+
+    // Find best and second-best archetype by cosine similarity
+    double best_sim = -1.0, second_sim = -1.0;
+    int best_idx = 0, second_idx = 1;
+
+    for (int i = 0; i < (int)ARCHETYPES.size(); i++) {
+        double sim = cosine_sim(user_vec, ARCHETYPES[i].vec);
+        if (sim > best_sim) {
+            second_sim = best_sim; second_idx = best_idx;
+            best_sim = sim; best_idx = i;
+        } else if (sim > second_sim) {
+            second_sim = sim; second_idx = i;
+        }
+    }
+
+    const auto& best = ARCHETYPES[best_idx];
+    const auto& shadow = ARCHETYPES[second_idx];
+
+    // Convert cosine sim to a 55-99% "match %" that feels meaningful.
+    // Real matches typically land in [0.6, 0.98]; remap [0.3, 1.0] → [55, 99].
+    auto sim_to_pct = [](double s) -> double {
+        double pct = 55.0 + (s - 0.3) / 0.7 * 44.0;
+        return std::max(55.0, std::min(99.0, pct));
+    };
+
+    PersonalityResult pr;
+    pr.archetype  = best.name;
+    pr.icon       = best.icon;
+    pr.tagline    = best.tagline;
+    pr.narrative  = best.narrative;
+    pr.evidence   = best.evidence;
+    pr.color      = best.color;
+    pr.match_pct  = sim_to_pct(best_sim);
+    pr.shadow_archetype = shadow.name;
+    pr.shadow_icon      = shadow.icon;
+    pr.shadow_pct       = sim_to_pct(second_sim);
+    pr.radar        = radar_raw;  // 8 dims
+    pr.radar_labels = RADAR_LABELS;
+
+    return pr;
+}
+
 
 // ══════════════════════════════════════════════════════════
 //  PERSONALITY ENGINE
@@ -562,10 +886,20 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     }
     std::sort(r.clusters.begin(), r.clusters.end(), [](const auto& a, const auto& b){ return a.total > b.total; });
 
-    // Personality
-    r.personality = compute_personality(cat_scores, r.night_owl_pct / 100.0,
-                                        r.weekend_pct / 100.0, question_cnt,
-                                        r.total_searches, r.peak_hour_label, r.top_sites);
+    // TF-IDF search fingerprint
+    r.tfidf_terms = compute_tfidf(query_freq, r.unique_queries);
+
+    // Cosine-similarity personality engine
+    int peak_hr_int = (int)(std::max_element(r.hour_counts.begin(), r.hour_counts.end())
+                            - r.hour_counts.begin());
+    r.personality = compute_personality_cosine(
+        cat_scores,
+        r.night_owl_pct / 100.0,
+        r.weekend_pct   / 100.0,
+        question_cnt,
+        r.total_searches,
+        peak_hr_int
+    );
 
     return r;
 }
@@ -630,13 +964,27 @@ json result_to_json(const WrappedResult& r) {
     }
     j["category_breakdown"] = cats;
 
+    // TF-IDF fingerprint words
+    json tfidf = json::array();
+    for (const auto& [term, score] : r.tfidf_terms) {
+        json item; item["term"] = term; item["score"] = std::round(score * 100) / 100.0;
+        tfidf.push_back(item);
+    }
+    j["tfidf_terms"] = tfidf;
+
     j["personality"] = {
-        {"archetype", r.personality.archetype},
-        {"icon",      r.personality.icon},
-        {"tagline",   r.personality.tagline},
-        {"narrative", r.personality.narrative},
-        {"evidence",  r.personality.evidence},
-        {"color",     r.personality.color}
+        {"archetype",        r.personality.archetype},
+        {"icon",             r.personality.icon},
+        {"tagline",          r.personality.tagline},
+        {"narrative",        r.personality.narrative},
+        {"evidence",         r.personality.evidence},
+        {"color",            r.personality.color},
+        {"match_pct",        std::round(r.personality.match_pct * 10) / 10.0},
+        {"shadow_archetype", r.personality.shadow_archetype},
+        {"shadow_icon",      r.personality.shadow_icon},
+        {"shadow_pct",       std::round(r.personality.shadow_pct * 10) / 10.0},
+        {"radar",            r.personality.radar},
+        {"radar_labels",     r.personality.radar_labels}
     };
 
     return j;
@@ -737,7 +1085,7 @@ int main() {
         res.set_content(R"({"status":"ok","engine":"Browser DNA C++ v2.0"})", "application/json");
     });
 
-    svr.set_mount_point("/", "/home/claude/search_wrapped/frontend");
+    svr.set_mount_point("/", "./frontend");
 
     std::cout << "\n╔═══════════════════════════════════════════╗\n";
     std::cout <<   "║   Browser DNA — C++ Engine  v2.0         ║\n";
