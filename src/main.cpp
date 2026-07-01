@@ -259,39 +259,158 @@ BrokenTime usec_to_broken(int64_t usec) {
 //  PARSE CHROME HISTORY JSON
 // ══════════════════════════════════════════════════════════
 
+// Parse RFC 3339 / ISO 8601 timestamp string → BrokenTime
+// Handles: "2024-03-15T02:14:00.000Z"  and  "2024-03-15T02:14:00Z"
+BrokenTime rfc3339_to_broken(const std::string& s) {
+    BrokenTime bt{0,0,0,0};
+    if (s.size() < 19) return bt;
+    struct tm t{};
+    t.tm_year = std::stoi(s.substr(0,4))  - 1900;
+    t.tm_mon  = std::stoi(s.substr(5,2))  - 1;
+    t.tm_mday = std::stoi(s.substr(8,2));
+    t.tm_hour = std::stoi(s.substr(11,2));
+    t.tm_min  = std::stoi(s.substr(14,2));
+    t.tm_sec  = std::stoi(s.substr(17,2));
+    t.tm_isdst = 0;
+#ifdef _WIN32
+    time_t epoch = _mkgmtime(&t);
+#else
+    time_t epoch = timegm(&t);
+#endif
+    if (epoch == (time_t)-1) return bt;
+    struct tm* gm = gmtime(&epoch);
+    bt.year  = gm->tm_year + 1900;
+    bt.month = gm->tm_mon;
+    bt.hour  = gm->tm_hour;
+    bt.dow   = (gm->tm_wday + 6) % 7;
+    // store back as usec so callers can use time_usec
+    // (we return the epoch via a side-channel in bt — callers recompute)
+    return bt;
+}
+
+// Returns epoch seconds from RFC3339 string, or 0 on failure
+int64_t rfc3339_to_usec(const std::string& s) {
+    if (s.size() < 19) return 0;
+    struct tm t{};
+    t.tm_year = std::stoi(s.substr(0,4))  - 1900;
+    t.tm_mon  = std::stoi(s.substr(5,2))  - 1;
+    t.tm_mday = std::stoi(s.substr(8,2));
+    t.tm_hour = std::stoi(s.substr(11,2));
+    t.tm_min  = std::stoi(s.substr(14,2));
+    t.tm_sec  = std::stoi(s.substr(17,2));
+    t.tm_isdst = 0;
+#ifdef _WIN32
+    time_t epoch = _mkgmtime(&t);
+#else
+    time_t epoch = timegm(&t);
+#endif
+    if (epoch == (time_t)-1) return 0;
+    return (int64_t)epoch * 1000000LL;
+}
+
 std::vector<HistoryEntry> parse_history(const json& root) {
     std::vector<HistoryEntry> entries;
 
+    // ── Format 1: Chrome BrowserHistory export — raw array or wrapped
+    //    {"url":..., "title":..., "time_usec":...}
+    // ── Format 2: Google Takeout MyActivity.json (Search)
+    //    array of {"header":"Search","title":"Searched for X",
+    //              "titleUrl":"https://google.com/search?q=X",
+    //              "time":"2024-03-15T02:14:00.000Z", ...}
+    // ── Format 3: Google Takeout wrapped in {"Browser History":[...]}
+
     const json* items = nullptr;
-    if (root.is_array()) items = &root;
-    else if (root.contains("Browser History") && root["Browser History"].is_array())
+    bool is_takeout = false;
+
+    if (root.is_array()) {
+        items = &root;
+        // Detect Takeout format by checking first element
+        if (!root.empty()) {
+            const auto& first = root[0];
+            if (first.contains("time") && first.contains("title") &&
+                first["time"].is_string()) {
+                is_takeout = true;
+            }
+        }
+    } else if (root.contains("Browser History") && root["Browser History"].is_array()) {
         items = &root["Browser History"];
-    else return entries;
+    } else {
+        return entries;
+    }
 
     for (const auto& item : *items) {
         HistoryEntry e;
-        if (item.contains("url"))   e.url   = item["url"].get<std::string>();
-        if (item.contains("title")) e.title = item["title"].get<std::string>();
-        if (item.contains("time_usec")) {
-            e.time_usec = item["time_usec"].get<int64_t>();
-            auto bt = usec_to_broken(e.time_usec);
-            e.year  = bt.year;
-            e.month = bt.month;
-            e.hour  = bt.hour;
-            e.dow   = bt.dow;
-        }
 
-        e.domain = extract_domain(e.url);
+        if (is_takeout) {
+            // ── Google Takeout MyActivity format ──────────────────────
+            // Title looks like "Searched for how to stop overthinking"
+            // or just the page title for non-search activity
+            if (item.contains("title")) {
+                std::string raw_title = item["title"].get<std::string>();
+                e.title = raw_title;
 
-        // Detect Google search
-        if (e.url.find("google.com/search") != std::string::npos) {
-            std::string q = extract_query_param(e.url, "q");
-            if (!q.empty()) {
-                e.is_search = true;
-                e.search_query = trim(q);
+                // Extract the search query from "Searched for X"
+                const std::string prefix = "Searched for ";
+                if (raw_title.rfind(prefix, 0) == 0) {
+                    e.is_search = true;
+                    e.search_query = trim(raw_title.substr(prefix.size()));
+                }
+            }
+
+            // URL comes from titleUrl
+            if (item.contains("titleUrl") && item["titleUrl"].is_string()) {
+                e.url = item["titleUrl"].get<std::string>();
+                // Also try to extract query from URL as fallback
+                if (!e.is_search && e.url.find("google.com/search") != std::string::npos) {
+                    std::string q = extract_query_param(e.url, "q");
+                    if (!q.empty()) {
+                        e.is_search = true;
+                        e.search_query = trim(q);
+                    }
+                }
+            }
+
+            // Parse RFC 3339 timestamp
+            if (item.contains("time") && item["time"].is_string()) {
+                std::string ts = item["time"].get<std::string>();
+                e.time_usec = rfc3339_to_usec(ts);
+                if (e.time_usec > 0) {
+                    auto bt = usec_to_broken(e.time_usec);
+                    e.year  = bt.year;
+                    e.month = bt.month;
+                    e.hour  = bt.hour;
+                    e.dow   = bt.dow;
+                }
+            }
+
+            // Use header as a domain proxy when URL is absent
+            if (e.url.empty() && item.contains("header") && item["header"].is_string()) {
+                e.domain = item["header"].get<std::string>();
+            }
+
+        } else {
+            // ── Chrome BrowserHistory format ──────────────────────────
+            if (item.contains("url"))   e.url   = item["url"].get<std::string>();
+            if (item.contains("title")) e.title = item["title"].get<std::string>();
+            if (item.contains("time_usec")) {
+                e.time_usec = item["time_usec"].get<int64_t>();
+                auto bt = usec_to_broken(e.time_usec);
+                e.year  = bt.year;
+                e.month = bt.month;
+                e.hour  = bt.hour;
+                e.dow   = bt.dow;
+            }
+            // Detect Google search from URL
+            if (e.url.find("google.com/search") != std::string::npos) {
+                std::string q = extract_query_param(e.url, "q");
+                if (!q.empty()) {
+                    e.is_search = true;
+                    e.search_query = trim(q);
+                }
             }
         }
 
+        if (e.domain.empty()) e.domain = extract_domain(e.url);
         entries.push_back(std::move(e));
     }
 
