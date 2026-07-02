@@ -1,3 +1,7 @@
+// Raise payload limit to 100 MB so large History.json files are accepted
+#ifndef CPPHTTPLIB_PAYLOAD_MAX_LENGTH
+#define CPPHTTPLIB_PAYLOAD_MAX_LENGTH (100 * 1024 * 1024)
+#endif
 // Do NOT define CPPHTTPLIB_OPENSSL_SUPPORT — leaving it undefined disables TLS
 #include "../include/httplib.h"
 #include "../include/json.hpp"
@@ -1166,6 +1170,7 @@ WrappedResult make_demo() {
 
 int main() {
     httplib::Server svr;
+    svr.set_payload_max_length(50 * 1024 * 1024); // 50 MB — handles large History.json files
 
     // CORS
     svr.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
@@ -1179,6 +1184,8 @@ int main() {
     // POST /api/analyze
     svr.Post("/api/analyze", [](const httplib::Request& req, httplib::Response& res) {
         try {
+            std::cerr << "DEBUG body size=" << req.body.size() 
+                  << " first200=[" << req.body.substr(0, 200) << "]\n";
             auto body  = json::parse(req.body);
             auto entries = parse_history(body);
             if (entries.empty()) {

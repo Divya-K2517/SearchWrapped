@@ -792,10 +792,10 @@ const btnEnter = document.getElementById('btn-enter');
 
 let pendingFile = null;
 
-function setFileChosen(name){
-  pendingFile = name ? true : null;
-  fcEl.textContent = name ? '✓ ' + name : '';
-  btnEnter.disabled = !name;
+function setFileChosen(file){
+  pendingFile = file || null;
+  fcEl.textContent = file ? '✓ ' + file.name : '';
+  btnEnter.disabled = !file;
 }
 
 dz.addEventListener('click', () => fi.click());
@@ -804,11 +804,11 @@ dz.addEventListener('dragleave', () => dz.classList.remove('over'));
 dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('over');
   const f = e.dataTransfer.files[0];
-  if(f){ pendingFile = f; setFileChosen(f.name); }
+  if(f) setFileChosen(f);
 });
 fi.addEventListener('change', e => {
   const f = e.target.files[0];
-  if(f){ pendingFile = f; setFileChosen(f.name); }
+  if(f) setFileChosen(f);
 });
 
 // ── Loading ───────────────────────────────────
@@ -823,14 +823,24 @@ btnEnter.addEventListener('click', async () => {
   setLoading(true, '⚡ C++ engine parsing your data...');
   btnEnter.disabled = true;
   try {
-    const text = await pendingFile.text();
-    const body = JSON.parse(text);
-    const res  = await fetch(`${API}/api/analyze`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d    = await res.json();
-    if(d.error){ alert('Error: '+d.error); return; }
+    // Send raw file bytes directly — no browser-side JSON parse/stringify
+    const res = await fetch(`${API}/api/analyze`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: pendingFile   // File object streams directly, no JSON.parse needed
+    });
+    if(!res.ok){
+      const errText = await res.text();
+      let msg = `Server error ${res.status}`;
+      try { msg = JSON.parse(errText).error || msg; } catch(_){}
+      alert('Analysis failed: ' + msg);
+      return;
+    }
+    const d = await res.json();
+    if(d.error){ alert('Analysis error: ' + d.error); return; }
     startGallery(d);
   } catch(e) {
-    alert('Could not reach C++ backend (localhost:8080). Is it running?\n\nRun: ./start.sh\n\nOr try demo data.');
+    alert('Could not reach C++ backend.\n\nMake sure ./start.sh is running, then open http://localhost:8080 in your browser (not the file directly).\n\nError: ' + e.message);
   } finally { setLoading(false); btnEnter.disabled=false; }
 });
 
