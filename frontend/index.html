@@ -23,6 +23,21 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
   position:fixed;inset:0;
   perspective:900px;
   perspective-origin:50% 42%;
+  /* Dark accent-wall backdrop — revealed through a transparent side wall
+     during its closeup. Reads as a lit gallery wall (vertical board seams,
+     soft spotlight, warm gradient) instead of a flat void. Because this is
+     the perspective container's own background, it sits behind ALL 3D
+     content and can never occlude the frames. */
+  background:
+    repeating-linear-gradient(90deg, rgba(255,240,210,0.05) 0 1px, transparent 1px 120px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 119px 120px, transparent 120px 240px),
+    radial-gradient(ellipse 60% 48% at 50% 40%, rgba(120,98,72,0.45) 0%, rgba(60,49,38,0.7) 55%, rgba(30,24,18,0.92) 100%),
+    linear-gradient(180deg, #4a3d2f 0%, #2e251c 50%, #1d1711 100%);
+}
+/* Soft vignette for depth + ambient mood */
+#museum-scene::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:40;
+  background:radial-gradient(ellipse 78% 72% at 50% 44%, transparent 52%, rgba(20,15,11,0.55) 100%);
 }
 
 #camera{
@@ -32,51 +47,78 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
   transform:translateZ(0px) translateX(0px) rotateY(0deg);
 }
 
-/* The room box */
+/* The room box — 2000(W) × 1200(H) × 1800(D), centered at origin */
 #room{
   position:absolute;
-  width:2400px;height:1400px;
+  width:2000px;height:1200px;
   left:50%;top:50%;
-  transform:translate(-50%,-50%) translateZ(-200px);
+  transform:translate(-50%,-50%);
   transform-style:preserve-3d;
 }
 
-.room-face{position:absolute;transform-style:preserve-3d}
+.room-face{position:absolute;left:50%;top:50%;transform-style:preserve-3d}
 
-/* Back wall */
+/* Back wall — z=-900, faces +z */
 #wall-back{
-  width:2400px;height:1400px;
-  background:linear-gradient(180deg, var(--ceiling) 0%, var(--wall) 60%, var(--wall) 100%);
-  transform:translateZ(-1200px);
+  width:2000px;height:1200px;
+  background:
+    repeating-linear-gradient(90deg, rgba(90,70,50,0.06) 0 1px, transparent 1px 200px),
+    linear-gradient(180deg, transparent 63%, rgba(120,95,65,0.22) 63%, rgba(120,95,65,0.22) 64.4%, transparent 64.4%),
+    linear-gradient(180deg, transparent 63%, rgba(170,150,120,0.16) 63%, rgba(170,150,120,0.16) 100%),
+    linear-gradient(180deg, var(--ceiling) 0%, var(--wall) 34%, var(--wall) 100%);
+  transform:translate(-50%,-50%) translateZ(-900px);
   border-bottom:3px solid rgba(90,70,50,0.15);
 }
-/* Left wall */
+/* Left wall — x=-1000, faces +x */
 #wall-left{
-  width:2400px;height:1400px;
-  background:linear-gradient(180deg, var(--ceiling) 0%, #ddd0c0 60%,#ddd0c0 100%);
-  transform-origin:left center;
-  transform:rotateY(90deg) translateZ(-1200px);
+  width:1800px;height:1200px;
+  background:
+    repeating-linear-gradient(90deg, rgba(90,70,50,0.06) 0 1px, transparent 1px 200px),
+    linear-gradient(180deg, transparent 63%, rgba(120,95,65,0.22) 63%, rgba(120,95,65,0.22) 64.4%, transparent 64.4%),
+    linear-gradient(180deg, transparent 63%, rgba(170,150,120,0.16) 63%, rgba(170,150,120,0.16) 100%),
+    linear-gradient(180deg, var(--ceiling) 0%, #ddd0c0 34%,#ddd0c0 100%);
+  transform:translate(-50%,-50%) rotateY(90deg) translateZ(-1000px);
 }
-/* Right wall */
+/* Right wall — x=+1000, faces -x */
 #wall-right{
-  width:2400px;height:1400px;
-  background:linear-gradient(180deg, var(--ceiling) 0%, #ddd0c0 60%,#ddd0c0 100%);
-  transform-origin:right center;
-  transform:rotateY(-90deg) translateZ(-1200px) translateX(-2400px);
+  width:1800px;height:1200px;
+  background:
+    repeating-linear-gradient(90deg, rgba(90,70,50,0.06) 0 1px, transparent 1px 200px),
+    linear-gradient(180deg, transparent 63%, rgba(120,95,65,0.22) 63%, rgba(120,95,65,0.22) 64.4%, transparent 64.4%),
+    linear-gradient(180deg, transparent 63%, rgba(170,150,120,0.16) 63%, rgba(170,150,120,0.16) 100%),
+    linear-gradient(180deg, var(--ceiling) 0%, #ddd0c0 34%,#ddd0c0 100%);
+  transform:translate(-50%,-50%) rotateY(-90deg) translateZ(-1000px);
 }
-/* Floor */
+/* Dark accent walls — sit just BEHIND the side walls (x=±1030). When a side
+   wall turns transparent during its closeup, this dark textured wall shows
+   through, reading as an intentional dark gallery accent wall (not a void). */
+.accent-wall{
+  width:1800px;height:1200px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,240,210,0.025) 0 1px, transparent 1px 160px),
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(90,75,58,0.5) 0%, rgba(45,38,30,0.85) 70%, rgba(28,23,18,1) 100%),
+    linear-gradient(180deg, #4a3f32 0%, #2f271f 55%, #211b15 100%);
+}
+#accent-left{ transform:translate(-50%,-50%) rotateY(90deg) translateZ(-1030px); }
+#accent-right{ transform:translate(-50%,-50%) rotateY(-90deg) translateZ(-1030px); }
+/* Floor — y=+600, faces up. Planks run along room depth. */
 #floor{
-  width:2400px;height:2400px;
-  background:linear-gradient(180deg,#b8a888 0%,#a09070 100%);
-  transform-origin:bottom center;
-  transform:rotateX(90deg) translateZ(0px) translateY(700px);
+  width:2000px;height:1800px;
+  background:
+    repeating-linear-gradient(0deg, rgba(60,42,24,0.16) 0 1.5px, transparent 1.5px 6px, rgba(60,42,24,0.07) 6px 7px, transparent 7px 150px),
+    repeating-linear-gradient(90deg, rgba(255,250,235,0.025) 0 2px, transparent 2px 150px),
+    linear-gradient(180deg,#b8a888 0%,#988868 100%);
+  transform:translate(-50%,-50%) rotateX(90deg) translateZ(-600px);
 }
-/* Ceiling */
+/* Ceiling — y=-600, faces down. Recessed light fixtures. */
 #ceiling{
-  width:2400px;height:2400px;
-  background:linear-gradient(180deg,var(--cream) 0%,var(--ceiling) 100%);
-  transform-origin:top center;
-  transform:rotateX(-90deg) translateZ(0px) translateY(-700px);
+  width:2000px;height:1800px;
+  background:
+    radial-gradient(ellipse 120px 70px at 22% 50%, rgba(255,250,235,0.7) 0%, rgba(255,250,235,0.15) 45%, transparent 70%),
+    radial-gradient(ellipse 120px 70px at 50% 50%, rgba(255,250,235,0.7) 0%, rgba(255,250,235,0.15) 45%, transparent 70%),
+    radial-gradient(ellipse 120px 70px at 78% 50%, rgba(255,250,235,0.7) 0%, rgba(255,250,235,0.15) 45%, transparent 70%),
+    linear-gradient(180deg,var(--cream) 0%,var(--ceiling) 100%);
+  transform:translate(-50%,-50%) rotateX(-90deg) translateZ(-600px);
 }
 
 /* Baseboard / crown trim */
@@ -100,31 +142,33 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 ═══════════════════════════════════════ */
 .exhibit-frame{
   position:absolute;
-  width:340px;height:280px;
+  left:50%;top:50%;
+  width:360px;height:300px;
   cursor:pointer;
   transform-style:preserve-3d;
 }
 
-/* Frame border */
+/* Frame border (wooden molding only — transparent fill so the mat shows) */
 .exhibit-frame .frame-border{
   position:absolute;inset:0;
-  border:8px solid #8a7458;
+  border:10px solid #8a7458;
   border-radius:3px;
   box-shadow:
     inset 0 0 0 2px rgba(255,240,200,0.3),
     0 8px 32px rgba(0,0,0,0.4),
     0 2px 8px rgba(0,0,0,0.3);
-  background:#6a5840;
+  background:transparent;
   z-index:1;
 }
 /* Frame inner mat */
 .exhibit-frame .frame-mat{
-  position:absolute;inset:8px;
+  position:absolute;inset:10px;
   background:var(--panel);
   overflow:hidden;
   display:flex;flex-direction:column;
   align-items:center;justify-content:center;
   padding:16px;
+  z-index:2;
 }
 /* Gallery label below frame */
 .exhibit-frame .frame-label{
@@ -144,21 +188,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
   pointer-events:none;
 }
 
-/* Back wall: 3 frames */
-/* positions along back wall: left third, center, right third */
-#frame-0{ left:300px;  top:200px; }
-#frame-1{ left:1030px; top:200px; }
-#frame-2{ left:1760px; top:200px; }
-
-/* Left wall: 3 frames — placed along the wall's width */
-#frame-3{ left:200px;  top:200px; }
-#frame-4{ left:930px;  top:200px; }
-#frame-5{ left:1660px; top:200px; }
-
-/* Right wall: 3 frames */
-#frame-6{ left:200px;  top:200px; }
-#frame-7{ left:930px;  top:200px; }
-#frame-8{ left:1660px; top:200px; }
+/* Frame wall placements are set via inline transforms (see markup).
+   Geometry: room is 2000(W)×1200(H)×1800(D), origin at center.
+   back wall z=-900, left wall x=-1000, right wall x=+1000, floor y=+600. */
 
 /* Frame thumbnail content */
 .frame-thumb-title{
@@ -547,15 +579,18 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 <div id="museum-scene">
   <div id="camera">
     <div id="room">
-      <!-- Walls -->
+      <!-- Walls (opaque, realistic). Dark accent walls sit BEHIND the side
+           walls; when a side wall is made transparent during its closeup,
+           the accent wall shows through — reading as an intentional dark
+           gallery wall instead of a void. -->
       <div class="room-face" id="wall-back"></div>
       <div class="room-face" id="wall-left"></div>
       <div class="room-face" id="wall-right"></div>
       <div class="room-face" id="floor"></div>
       <div class="room-face" id="ceiling"></div>
 
-      <!-- BACK WALL frames (0,1,2) -->
-      <div class="exhibit-frame" id="frame-0" style="position:absolute;left:300px;top:200px;transform:translateZ(-1190px)">
+      <!-- LEFT WALL frames (0,1,2) -->
+      <div class="exhibit-frame" id="frame-0" style="transform:translate(-50%,-50%) rotateY(90deg) translateZ(-990px) translateY(-80px) translateX(-600px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery I</div>
@@ -565,7 +600,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Gallery I · Top Sites</div>
       </div>
-      <div class="exhibit-frame" id="frame-1" style="position:absolute;left:1030px;top:180px;transform:translateZ(-1190px)">
+      <div class="exhibit-frame" id="frame-1" style="transform:translate(-50%,-50%) rotateY(90deg) translateZ(-990px) translateY(-80px) translateX(0px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Entrance</div>
@@ -575,7 +610,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Entrance · Overview</div>
       </div>
-      <div class="exhibit-frame" id="frame-2" style="position:absolute;left:1760px;top:200px;transform:translateZ(-1190px)">
+      <div class="exhibit-frame" id="frame-2" style="transform:translate(-50%,-50%) rotateY(90deg) translateZ(-990px) translateY(-80px) translateX(600px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery II</div>
@@ -586,8 +621,8 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         <div class="frame-label">Gallery II · Searches</div>
       </div>
 
-      <!-- LEFT WALL frames (3,4,5) — rotated onto left wall -->
-      <div class="exhibit-frame" id="frame-3" style="position:absolute;left:-1160px;top:200px;transform:rotateY(90deg) translateZ(-1160px) translateX(-1160px)">
+      <!-- BACK WALL frames (3,4,5) -->
+      <div class="exhibit-frame" id="frame-3" style="transform:translate(-50%,-50%) translateY(-80px) translateX(-650px) translateZ(-880px)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery III</div>
@@ -597,7 +632,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Gallery III · Time Patterns</div>
       </div>
-      <div class="exhibit-frame" id="frame-4" style="position:absolute;left:-1160px;top:200px;transform:rotateY(90deg) translateZ(-560px) translateX(-1160px)">
+      <div class="exhibit-frame" id="frame-4" style="transform:translate(-50%,-50%) translateY(-80px) translateX(0px) translateZ(-880px)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery IV</div>
@@ -607,7 +642,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Gallery IV · Clusters</div>
       </div>
-      <div class="exhibit-frame" id="frame-5" style="position:absolute;left:-1160px;top:200px;transform:rotateY(90deg) translateZ(40px) translateX(-1160px)">
+      <div class="exhibit-frame" id="frame-5" style="transform:translate(-50%,-50%) translateY(-80px) translateX(650px) translateZ(-880px)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery V</div>
@@ -619,7 +654,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
       </div>
 
       <!-- RIGHT WALL frames (6,7,8) -->
-      <div class="exhibit-frame" id="frame-6" style="position:absolute;left:3560px;top:200px;transform:rotateY(-90deg) translateZ(-1160px) translateX(1160px)">
+      <div class="exhibit-frame" id="frame-6" style="transform:translate(-50%,-50%) rotateY(-90deg) translateZ(-990px) translateY(-80px) translateX(-600px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery VI</div>
@@ -629,7 +664,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Gallery VI · Stats</div>
       </div>
-      <div class="exhibit-frame" id="frame-7" style="position:absolute;left:3560px;top:200px;transform:rotateY(-90deg) translateZ(-560px) translateX(1160px)">
+      <div class="exhibit-frame" id="frame-7" style="transform:translate(-50%,-50%) rotateY(-90deg) translateZ(-990px) translateY(-80px) translateX(0px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery VII</div>
@@ -639,7 +674,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
         </div>
         <div class="frame-label">Gallery VII · Personality</div>
       </div>
-      <div class="exhibit-frame" id="frame-8" style="position:absolute;left:3560px;top:200px;transform:rotateY(-90deg) translateZ(40px) translateX(1160px)">
+      <div class="exhibit-frame" id="frame-8" style="transform:translate(-50%,-50%) rotateY(-90deg) translateZ(-990px) translateY(-80px) translateX(600px) rotateY(180deg)">
         <div class="frame-border"></div>
         <div class="frame-mat">
           <div class="frame-thumb-num">Gallery VIII</div>
@@ -732,10 +767,10 @@ const TOTAL = 9;
 
 // ── Camera state machine ──────────────────────
 // Each exhibit has a camera position in the 3D room
-// Wall layout:
-//   back wall:  exhibits 0=hero(center), 1=sites(left), 2=searches(right)
-//   left wall:  exhibits 3=time, 4=clusters, 5=fingerprint
-//   right wall: exhibits 6=stats, 7=arch, 8=share
+// Wall layout (tour sweeps left → back → right):
+//   left wall:  exhibits 0,1,2
+//   back wall:  exhibits 3,4,5
+//   right wall: exhibits 6,7,8
 
 const EXHIBIT_META = [
   {num:'Entrance', title:'Overview'},
@@ -750,26 +785,32 @@ const EXHIBIT_META = [
 ];
 
 // Camera transforms for each exhibit
-// translateZ moves us forward/back, translateX left/right, rotateY turns camera
+// translateZ/translateX/rotateY on #camera move the room (equiv. viewer at -tz,-tx).
+// Tour order: entry (wide) → left wall (1,2) → back wall (3,4,5) → right wall (6,7,8)
 const CAM_POSES = [
-  // 0: hero — center back wall
-  {tz: -400, tx:    0, ry:   0},
-  // 1: sites — back wall left
-  {tz: -400, tx:  550, ry:  -8},
-  // 2: searches — back wall right
-  {tz: -400, tx: -550, ry:   8},
-  // 3: left wall far
-  {tz: -200, tx:  800, ry: -60},
-  // 4: left wall mid
-  {tz: -200, tx:  800, ry: -80},
-  // 5: left wall near
-  {tz: -200, tx:  800, ry:-100},
-  // 6: right wall far
-  {tz: -200, tx: -800, ry:  60},
-  // 7: right wall mid
-  {tz: -200, tx: -800, ry:  80},
-  // 8: right wall near
-  {tz: -200, tx: -800, ry: 100},
+  // 0: entry — doorway, whole gallery visible (all 9 exhibits)
+  {tz: -1800, tx:    0, ry:    0},
+  // LEFT WALL (panels 0,1,2) — camera faces -x (rotateY +90)
+  //   frames at z=+600(0), 0(1), -600(2); tx pans viewer along z
+  // 1: left wall — panel 1 (z=0)
+  {tz: -1000, tx:    0, ry:   90},
+  // 2: left wall — panel 2 (z=-600)
+  {tz: -1000, tx:  600, ry:   90},
+  // BACK WALL (panels 3,4,5) — camera faces -z (rotateY 0)
+  // 3: back wall — left (x=-650)
+  {tz:  -250, tx:  650, ry:    0},
+  // 4: back wall — center (x=0)
+  {tz:  -250, tx:    0, ry:    0},
+  // 5: back wall — right (x=+650)
+  {tz:  -250, tx: -650, ry:    0},
+  // RIGHT WALL (panels 6,7,8) — camera faces +x (rotateY -90)
+  //   frames at z=-600(6), 0(7), +600(8); tx pans viewer along z
+  // 6: right wall — panel 6 (z=-600)
+  {tz: -1000, tx: -600, ry:  -90},
+  // 7: right wall — panel 7 (z=0)
+  {tz: -1000, tx:    0, ry:  -90},
+  // 8: right wall — panel 8 (z=+600)
+  {tz: -1000, tx:  600, ry:  -90},
 ];
 
 // ── Upload page typewriter ─────────────────────
@@ -876,10 +917,36 @@ function startGallery(d){
 }
 
 // ── Camera glide ──────────────────────────────
+// Wall each frame lives on: 0=left(0,1,2) 1=back(3,4,5) 2=right(6,7,8)
+const FRAME_WALL = [0,0,0,1,1,1,2,2,2];
+function updateFrameVisibility(idx){
+  // Entry (idx 0) shows the whole gallery. Closeups only render the target wall
+  // so frames on the wall behind the camera don't project as distorted bands
+  // (CSS 3D has no z-buffer).
+  const target = idx===0 ? -1 : FRAME_WALL[idx];
+  for(let i=0;i<TOTAL;i++){
+    const f=document.getElementById('frame-'+i);
+    if(f) f.style.visibility = (target===-1 || FRAME_WALL[i]===target) ? 'visible':'hidden';
+  }
+  // CSS 3D has no z-buffer: an opaque rotated side-wall quad paints over
+  // the frames mounted on it. So during a side-wall closeup we make ONLY the
+  // target side wall transparent — revealing the dark accent wall behind it,
+  // which reads as an intentional dark gallery wall (frames float in front).
+  // Back wall & entry keep all walls opaque.
+  const WALL_ID=['wall-left','wall-back','wall-right'];
+  WALL_ID.forEach((id,i)=>{
+    const w=document.getElementById(id);
+    if(!w) return;
+    const sideCloseup=(target!==-1 && target!==1 && i===target);
+    w.style.background = sideCloseup ? 'transparent' : '';
+    w.style.opacity   = sideCloseup ? '0' : '';
+  });
+}
 function glideTo(idx){
   const pose = CAM_POSES[idx];
   const cam  = document.getElementById('camera');
   cam.style.transform = `translateZ(${pose.tz}px) translateX(${pose.tx}px) rotateY(${pose.ry}deg)`;
+  updateFrameVisibility(idx);
 
   // Update HUD
   const pct = (idx+1)/TOTAL*100;
@@ -951,6 +1018,7 @@ function backToEntrance(){
   // Reset camera
   const cam = document.getElementById('camera');
   cam.style.transform = 'translateZ(0px) translateX(0px) rotateY(0deg)';
+  updateFrameVisibility(0);
 
   setTimeout(()=>{
     document.getElementById('upload-kiosk').classList.remove('hidden');
