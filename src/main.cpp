@@ -26,6 +26,8 @@ using json = nlohmann::json;
 // ══════════════════════════════════════════════════════════
 
 struct HistoryEntry {
+    //stores one line of the history.json file
+
     std::string url;
     std::string title;
     std::string domain;
@@ -39,44 +41,47 @@ struct HistoryEntry {
 };
 
 struct TopSite {
+    //defining a domain
     std::string domain;
     int visits;
     std::string category;
-    std::string label;      // human-readable name
+    std::string label;   
     std::string color;
 };
 
 struct SearchCluster {
+    //one type of theme of searches
     std::string theme;
     std::string icon;
-    std::vector<std::string> queries;
+    std::vector<std::string> queries; //some top example queries
     int total;
 };
 
 struct PersonalityResult {
+    //the result for what type of personality the user is
     std::string archetype;
     std::string icon;
     std::string tagline;
     std::string narrative;
     std::vector<std::string> evidence;
     std::string color;
-    // Cosine similarity fields
+    //cosine similarity fields
     double match_pct = 0.0;                  // 0-100 confidence
-    std::string shadow_archetype;            // second-closest
+    std::string shadow_archetype;            //second-closest
     std::string shadow_icon;
     double shadow_pct = 0.0;
-    std::vector<double> radar;               // 8 normalized dimension scores for chart
+    std::vector<double> radar;               //8 normalized dimension scores for chart
     std::vector<std::string> radar_labels;
 };
 
 struct WrappedResult {
-    // Core counts
-    int total_visits;
-    int total_searches;
-    int unique_queries;
-    int unique_domains;
-    int year_start;
-    int year_end;
+    //the output, everything frontend cares abt
+    int total_visits = 0;
+    int total_searches = 0;
+    int unique_queries = 0;
+    int unique_domains = 0;
+    int year_start = 0;
+    int year_end = 0;
 
     // Time patterns
     std::vector<int> month_counts;     // 12
@@ -85,8 +90,8 @@ struct WrappedResult {
     std::string peak_hour_label;
     std::string peak_day_label;
     std::string peak_month_label;
-    double night_owl_pct;
-    double weekend_pct;
+    double night_owl_pct = 0.0;
+    double weekend_pct = 0.0;
 
     // Sites
     std::vector<TopSite> top_sites;    // top 12
@@ -95,23 +100,23 @@ struct WrappedResult {
     std::vector<std::pair<std::string,int>> top_searches;
     std::vector<SearchCluster> clusters;
     std::string longest_query;
-    int longest_query_words;
-    int question_count;
-    double avg_query_words;
+    int longest_query_words = 0;
+    int question_count = 0;
+    double avg_query_words = 0.0;
 
-    // Categories
+    //categories
     std::vector<std::pair<std::string,int>> category_breakdown;
 
-    // Personality
+    //personality
     PersonalityResult personality;
 
-    // Fun stats
-    double searches_per_day;
-    double visits_per_day;
+    //fun stats
+    double searches_per_day = 0.0;
+    double visits_per_day = 0.0;
     int binge_sessions;        // sessions > 30 consecutive minutes
     std::string alter_ego;     // based on peak hour label
 
-    // TF-IDF fingerprint — top terms that define this user's search DNA
+    //TF-IDF fingerprint — top terms for this user
     std::vector<std::pair<std::string,double>> tfidf_terms; // (word, score)
 };
 
@@ -122,32 +127,33 @@ struct WrappedResult {
 struct DomainInfo { std::string label; std::string category; std::string color; };
 
 static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
-    // Career
+    //domain database, hardcoded for now but should be auto categorized in the future
+    //career
     {"linkedin.com",          {"LinkedIn",       "Career",        "#0A66C2"}},
     {"careers.purdue.edu",    {"Purdue Careers",  "Career",       "#CEB888"}},
     {"glassdoor.com",         {"Glassdoor",      "Career",        "#0CAA41"}},
     {"indeed.com",            {"Indeed",         "Career",        "#2164F3"}},
     {"handshake.com",         {"Handshake",      "Career",        "#E95234"}},
-    // School
+    //school
     {"purdue.brightspace.com",{"Brightspace",    "School",        "#CEB888"}},
     {"sso.purdue.edu",        {"Purdue SSO",     "School",        "#9D7535"}},
     {"purdue.edu",            {"Purdue",         "School",        "#CEB888"}},
     {"piazza.com",            {"Piazza",         "School",        "#4285F4"}},
     {"gradescope.com",        {"Gradescope",     "School",        "#009BDE"}},
-    // Coding
+    //coding
     {"leetcode.com",          {"LeetCode",       "Coding",        "#FFA116"}},
     {"github.com",            {"GitHub",         "Coding",        "#24292E"}},
     {"stackoverflow.com",     {"Stack Overflow", "Coding",        "#F48024"}},
     {"replit.com",            {"Replit",         "Coding",        "#F26207"}},
     {"codesandbox.io",        {"CodeSandbox",    "Coding",        "#151515"}},
     {"docs.google.com",       {"Google Docs",    "Productivity",  "#4285F4"}},
-    // Shopping
+    //shopping
     {"amazon.com",            {"Amazon",         "Shopping",      "#FF9900"}},
     {"aeropostale.com",       {"Aeropostale",    "Shopping",      "#EC1C24"}},
     {"us.shein.com",          {"SHEIN",          "Shopping",      "#E83E70"}},
     {"etsy.com",              {"Etsy",           "Shopping",      "#F1641E"}},
     {"pinterest.com",         {"Pinterest",      "Social",        "#E60023"}},
-    // Social / Entertainment
+    //social / Entertainment
     {"youtube.com",           {"YouTube",        "Entertainment", "#FF0000"}},
     {"instagram.com",         {"Instagram",      "Social",        "#E1306C"}},
     {"reddit.com",            {"Reddit",         "Social",        "#FF4500"}},
@@ -157,11 +163,11 @@ static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
     {"nytimes.com",           {"NY Times",       "News",          "#000000"}},
     {"theweeknd.com",         {"The Weeknd",     "Entertainment", "#8B0000"}},
     {"ticketmaster.com",      {"Ticketmaster",   "Entertainment", "#026CDF"}},
-    // Productivity
+    //productivity
     {"mail.google.com",       {"Gmail",          "Productivity",  "#EA4335"}},
     {"calendar.google.com",   {"Calendar",       "Productivity",  "#4285F4"}},
     {"google.com",            {"Google",         "Search",        "#4285F4"}},
-    // Other
+    //other
     {"duosecurity.com",       {"Duo Auth",       "Security",      "#6BBE4E"}},
     {"onboarding-us10.hr.cloud.sap",{"SAP HR",  "Work",          "#008FD3"}},
     {"xo.store",              {"XO Store",       "Shopping",      "#8B0000"}},
@@ -172,6 +178,8 @@ static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
 // ══════════════════════════════════════════════════════════
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>> SEARCH_CATS = {
+    //search categories, hardcoded for now
+    //matches keywords to a category
     {"Job Hunting",      {"job","internship","career","resume","linkedin","salary","hiring","interview","glassdoor","offer","apply","position","recruiter","cover letter"}},
     {"Coding & Tech",    {"leetcode","algorithm","python","javascript","sql","api","code","programming","react","data structure","typescript","backend","frontend","system design","topological","binary","sort","tree","graph","recursion"}},
     {"School",           {"purdue","course","exam","grade","professor","gpa","assignment","credit","major","class","lecture","midterm","final","brightspace","piazza"}},
@@ -193,26 +201,27 @@ std::string to_lower(std::string s) {
 }
 
 std::string trim(const std::string& s) {
+    //cuts off leading/trailing whitespace
     auto start = s.find_first_not_of(" \t\n\r");
     auto end   = s.find_last_not_of(" \t\n\r");
     if (start == std::string::npos) return "";
     return s.substr(start, end - start + 1);
 }
 
-// Extract domain from URL string (fast, no library)
+//extract domain from URL string (fast, no library)
 std::string extract_domain(const std::string& url) {
-    // strip scheme
+    //strip scheme
     size_t start = url.find("://");
     if (start == std::string::npos) start = 0;
     else start += 3;
-    // strip www.
+    //strip www.
     if (url.substr(start, 4) == "www.") start += 4;
     size_t end = url.find('/', start);
     if (end == std::string::npos) end = url.size();
     return url.substr(start, end - start);
 }
 
-// Extract query param from URL
+//extract query param from URL
 std::string extract_query_param(const std::string& url, const std::string& param) {
     std::string needle = param + "=";
     size_t pos = url.find('?');
@@ -223,7 +232,7 @@ std::string extract_query_param(const std::string& url, const std::string& param
     size_t end = url.find_first_of("&#", pos);
     if (end == std::string::npos) end = url.size();
     std::string encoded = url.substr(pos, end - pos);
-    // URL-decode common encodings
+    //URL-decode common encodings
     std::string out;
     for (size_t i = 0; i < encoded.size(); i++) {
         if (encoded[i] == '+') { out += ' '; }
