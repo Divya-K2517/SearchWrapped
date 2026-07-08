@@ -223,15 +223,20 @@ std::string extract_domain(const std::string& url) {
 
 //extract query param from URL
 std::string extract_query_param(const std::string& url, const std::string& param) {
+    //find things like ?q=search+term or &q=search+term
     std::string needle = param + "=";
+    
     size_t pos = url.find('?');
     if (pos == std::string::npos) return "";
+    
     pos = url.find(needle, pos);
     if (pos == std::string::npos) return "";
+    
     pos += needle.size();
     size_t end = url.find_first_of("&#", pos);
     if (end == std::string::npos) end = url.size();
     std::string encoded = url.substr(pos, end - pos);
+    
     //URL-decode common encodings
     std::string out;
     for (size_t i = 0; i < encoded.size(); i++) {
@@ -258,6 +263,7 @@ int count_words(const std::string& s) {
 struct BrokenTime { int year, month, hour, dow; }; // month 0-based, dow 0=Mon
 
 BrokenTime usec_to_broken(int64_t usec) {
+    //convert microseconds since epoch to broken-down UTC time
     time_t t = (time_t)(usec / 1000000LL);
     struct tm* gm = gmtime(&t);
     BrokenTime bt;
@@ -271,35 +277,6 @@ BrokenTime usec_to_broken(int64_t usec) {
 // ══════════════════════════════════════════════════════════
 //  PARSE CHROME HISTORY JSON
 // ══════════════════════════════════════════════════════════
-
-// Parse RFC 3339 / ISO 8601 timestamp string → BrokenTime
-// Handles: "2024-03-15T02:14:00.000Z"  and  "2024-03-15T02:14:00Z"
-BrokenTime rfc3339_to_broken(const std::string& s) {
-    BrokenTime bt{0,0,0,0};
-    if (s.size() < 19) return bt;
-    struct tm t{};
-    t.tm_year = std::stoi(s.substr(0,4))  - 1900;
-    t.tm_mon  = std::stoi(s.substr(5,2))  - 1;
-    t.tm_mday = std::stoi(s.substr(8,2));
-    t.tm_hour = std::stoi(s.substr(11,2));
-    t.tm_min  = std::stoi(s.substr(14,2));
-    t.tm_sec  = std::stoi(s.substr(17,2));
-    t.tm_isdst = 0;
-#ifdef _WIN32
-    time_t epoch = _mkgmtime(&t);
-#else
-    time_t epoch = timegm(&t);
-#endif
-    if (epoch == (time_t)-1) return bt;
-    struct tm* gm = gmtime(&epoch);
-    bt.year  = gm->tm_year + 1900;
-    bt.month = gm->tm_mon;
-    bt.hour  = gm->tm_hour;
-    bt.dow   = (gm->tm_wday + 6) % 7;
-    // store back as usec so callers can use time_usec
-    // (we return the epoch via a side-channel in bt — callers recompute)
-    return bt;
-}
 
 // Returns epoch seconds from RFC3339 string, or 0 on failure
 int64_t rfc3339_to_usec(const std::string& s) {
@@ -324,20 +301,22 @@ int64_t rfc3339_to_usec(const std::string& s) {
 std::vector<HistoryEntry> parse_history(const json& root) {
     std::vector<HistoryEntry> entries;
 
-    // ── Format 1: Chrome BrowserHistory export — raw array or wrapped
+    //format 1: Chrome BrowserHistory export — raw array or wrapped
     //    {"url":..., "title":..., "time_usec":...}
-    // ── Format 2: Google Takeout MyActivity.json (Search)
+
+    //format 2: Google Takeout MyActivity.json (Search)
     //    array of {"header":"Search","title":"Searched for X",
     //              "titleUrl":"https://google.com/search?q=X",
     //              "time":"2024-03-15T02:14:00.000Z", ...}
-    // ── Format 3: Google Takeout wrapped in {"Browser History":[...]}
+
+    //format 3: Google Takeout wrapped in {"Browser History":[...]}
 
     const json* items = nullptr;
     bool is_takeout = false;
 
     if (root.is_array()) {
         items = &root;
-        // Detect Takeout format by checking first element
+        //detect Takeout format by checking first element
         if (!root.empty()) {
             const auto& first = root[0];
             if (first.contains("time") && first.contains("title") &&
@@ -356,13 +335,13 @@ std::vector<HistoryEntry> parse_history(const json& root) {
 
         if (is_takeout) {
             // ── Google Takeout MyActivity format ──────────────────────
-            // Title looks like "Searched for how to stop overthinking"
-            // or just the page title for non-search activity
+            //title looks like "Searched for how to stop overthinking"
+            //or just the page title for non-search activity
             if (item.contains("title")) {
                 std::string raw_title = item["title"].get<std::string>();
                 e.title = raw_title;
 
-                // Extract the search query from "Searched for X"
+                //extract the search query from "Searched for X"
                 const std::string prefix = "Searched for ";
                 if (raw_title.rfind(prefix, 0) == 0) {
                     e.is_search = true;
@@ -370,10 +349,10 @@ std::vector<HistoryEntry> parse_history(const json& root) {
                 }
             }
 
-            // URL comes from titleUrl
+            //URL comes from titleUrl
             if (item.contains("titleUrl") && item["titleUrl"].is_string()) {
                 e.url = item["titleUrl"].get<std::string>();
-                // Also try to extract query from URL as fallback
+                //also try to extract query from URL as fallback
                 if (!e.is_search && e.url.find("google.com/search") != std::string::npos) {
                     std::string q = extract_query_param(e.url, "q");
                     if (!q.empty()) {
@@ -383,7 +362,7 @@ std::vector<HistoryEntry> parse_history(const json& root) {
                 }
             }
 
-            // Parse RFC 3339 timestamp
+            //parse RFC 3339 timestamp
             if (item.contains("time") && item["time"].is_string()) {
                 std::string ts = item["time"].get<std::string>();
                 e.time_usec = rfc3339_to_usec(ts);
@@ -396,7 +375,7 @@ std::vector<HistoryEntry> parse_history(const json& root) {
                 }
             }
 
-            // Use header as a domain proxy when URL is absent
+            //use header as a domain proxy when URL is absent
             if (e.url.empty() && item.contains("header") && item["header"].is_string()) {
                 e.domain = item["header"].get<std::string>();
             }
@@ -413,7 +392,7 @@ std::vector<HistoryEntry> parse_history(const json& root) {
                 e.hour  = bt.hour;
                 e.dow   = bt.dow;
             }
-            // Detect Google search from URL
+            //detect Google search from URL
             if (e.url.find("google.com/search") != std::string::npos) {
                 std::string q = extract_query_param(e.url, "q");
                 if (!q.empty()) {
@@ -423,7 +402,6 @@ std::vector<HistoryEntry> parse_history(const json& root) {
             }
         }
 
-        if (e.domain.empty()) e.domain = extract_domain(e.url);
         entries.push_back(std::move(e));
     }
 
@@ -458,6 +436,8 @@ static const std::set<std::string> STOPWORDS = {
 };
 
 static std::vector<std::string> tokenize_query(const std::string& s) {
+    //splits a query into lowercase tokens
+    // >= 3 chars, with stopwords filtered out
     std::vector<std::string> tokens;
     std::string cur;
     for (char c : s) {
@@ -472,14 +452,14 @@ static std::vector<std::string> tokenize_query(const std::string& s) {
     return tokens;
 }
 
-// General English word frequency prior: log(corpus_size / estimated_df_in_web_corpus)
-// Calibrated so domain-specific terms score much higher than generic English.
-// Words not in this table get idf_prior = log(1000) ≈ 6.9 (rare/technical).
+//general English word frequency prior: log(corpus_size / estimated_df_in_web_corpus)
+//calibrated so domain-specific terms score much higher than generic English.
+//words not in this table get idf_prior = log(1000) ≈ 6.9 (rare/technical).
 static const std::unordered_map<std::string,double> IDF_PRIOR = {
     {"algorithm",5.2},{"leetcode",7.5},{"python",4.8},{"javascript",4.9},
     {"typescript",5.4},{"react",5.1},{"backend",5.3},{"frontend",5.2},
     {"internship",5.8},{"resume",5.5},{"linkedin",5.6},{"glassdoor",6.2},
-    {"salary",5.4},{"recruiter",6.0},{"interview",5.2},{"leetcode",7.5},
+    {"salary",5.4},{"recruiter",6.0},{"interview",5.2},
     {"github",5.3},{"stackoverflow",6.1},{"recursion",5.9},{"binary",5.0},
     {"sorting",5.5},{"dynamic",4.9},{"programming",4.7},{"structure",4.6},
     {"calories",5.1},{"recipe",4.8},{"nutrition",5.2},{"protein",5.0},
@@ -499,6 +479,14 @@ std::vector<std::pair<std::string,double>> compute_tfidf(
     const std::unordered_map<std::string,int>& query_freq,
     int total_queries
 ) {
+    //for each token, count how many times it appears across all queries (TF) and how many unique queries contain it (DF)
+    //tf = term frequency across all queries / total terms
+    //idf = 0.6 * corpus_idf + 0.4 * english_prior
+        //corpus_idf = log((N + 1) / (df + 0.5)) where N = total unique queries, df = # queries containing term
+            //esstentially this is how rare the term is across all queries (higher = more rare)
+        //english_prior is how common the term is in general English (lower = more common)
+    //final score = tf * idf * 1000 (scaled for readability)
+
     if (total_queries == 0) return {};
 
     // Step 1: term frequencies across all queries (treat corpus as one doc per unique query)
