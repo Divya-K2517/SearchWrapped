@@ -548,7 +548,7 @@ std::vector<std::pair<std::string,double>> compute_tfidf(
 //    dims[8]    = night_owl fraction (0-1)
 //    dims[9]    = weekend fraction (0-1)
 //    dims[10]   = question ratio (questions / total_searches)
-//    dims[11]   = avg_query_words normalized (÷8)
+//    dims[11]   = avg_query_words normalized (÷8) std::min(1.0, q_ratio * 2.0)
 //    dims[12]   = peak_hour_slot (0=morning, 0.5=afternoon, 1=night)
 //
 //  Each archetype is a hand-tuned ideal vector. Similarity = dot(u,a) / (|u||a|).
@@ -635,13 +635,15 @@ static const std::vector<ArchetypeSpec> ARCHETYPES = {
 };
 
 static double cosine_sim(const std::vector<double>& a, const std::vector<double>& b) {
+    //does dot product / (|a||b|) for two vectors
+
     double dot = 0, na = 0, nb = 0;
     for (size_t i = 0; i < a.size() && i < b.size(); i++) {
         dot += a[i] * b[i];
         na  += a[i] * a[i];
         nb  += b[i] * b[i];
     }
-    if (na < 1e-9 || nb < 1e-9) return 0.0;
+    if (na < 1e-9 || nb < 1e-9) return 0.0; //return 0 if either vector is zero-length
     return dot / (std::sqrt(na) * std::sqrt(nb));
 }
 
@@ -653,7 +655,7 @@ PersonalityResult compute_personality_cosine(
     int total_searches,
     int peak_hour            // 0-23
 ) {
-    // Build category score map, normalize to 0-1
+    //build category score map, normalize to 0-1
     std::unordered_map<std::string,double> cm;
     double cat_max = 1.0;
     for (const auto& [n, s] : cats) {
@@ -814,22 +816,23 @@ PersonalityResult compute_personality(
 // ══════════════════════════════════════════════════════════
 
 WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
-    WrappedResult r;
+    WrappedResult r; //result struct to return
     r.month_counts = std::vector<int>(12, 0);
     r.hour_counts  = std::vector<int>(24, 0);
     r.dow_counts   = std::vector<int>(7, 0);
 
     if (entries.empty()) return r;
 
-    // Date range
+    //date range
     int64_t min_t = INT64_MAX, max_t = INT64_MIN;
     for (const auto& e : entries) {
+        //go through every entry and find the min/max timestamp
         if (e.time_usec > 0) {
             min_t = std::min(min_t, e.time_usec);
             max_t = std::max(max_t, e.time_usec);
         }
     }
-    auto bt0 = usec_to_broken(min_t);
+    auto bt0 = usec_to_broken(min_t); //convert to format: year, month, day, hour, dow
     auto bt1 = usec_to_broken(max_t);
     r.year_start = bt0.year;
     r.year_end   = bt1.year;
@@ -837,7 +840,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     double days_total = (max_t - min_t) / 1e6 / 86400.0;
     if (days_total < 1) days_total = 1;
 
-    // Accumulators
+    //accumulators
     std::unordered_map<std::string, int> domain_freq;
     std::unordered_map<std::string, int> query_freq;
     int night_cnt = 0, weekend_cnt = 0;
@@ -847,16 +850,17 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     int longest_wc = 0;
 
     for (const auto& e : entries) {
-        // Time breakdown
+        //time breakdown
         if (e.month >= 0 && e.month < 12) r.month_counts[e.month]++;
         if (e.hour  >= 0 && e.hour  < 24) r.hour_counts[e.hour]++;
-        if (e.dow   >= 0 && e.dow   <  7) r.dow_counts[e.dow]++;
+        if (e.dow   >= 0 && e.dow   <  7) r.dow_counts[e.dow]++; //dow is 0=Mon, 6=Sun
 
-        // Night owl: 23:00 - 04:00
+        //night owl: 23:00 - 04:00
         if (e.hour >= 23 || e.hour <= 4) night_cnt++;
-        // Weekend: Sat=5, Sun=6
+        //weekend: Sat=5, Sun=6
         if (e.dow >= 5) weekend_cnt++;
 
+        //if domain is present, count it
         if (!e.domain.empty()) domain_freq[e.domain]++;
 
         if (e.is_search && !e.search_query.empty()) {
@@ -864,8 +868,10 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
             query_freq[ql]++;
             int wc = count_words(ql);
             total_qwords += wc;
+            //update longest query if this one is longer
             if (wc > longest_wc) { longest_wc = wc; r.longest_query = e.search_query; }
-            // Question detection
+            
+            //question detection, if the query starts with a question word, count it
             if (ql.rfind("how ",0)==0 || ql.rfind("why ",0)==0 || ql.rfind("what ",0)==0 ||
                 ql.rfind("when ",0)==0 || ql.rfind("where ",0)==0 || ql.rfind("is ",0)==0 ||
                 ql.rfind("does ",0)==0 || ql.rfind("can ",0)==0 || ql.rfind("which ",0)==0) {
