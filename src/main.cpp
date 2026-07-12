@@ -881,6 +881,8 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     }
 
     r.total_visits    = (int)entries.size();
+    //sum of all query frequencies = total searches
+    //b.second is the frequency count for that query, a is the running total
     r.total_searches  = (int)std::accumulate(query_freq.begin(), query_freq.end(), 0,
                             [](int a, const auto& b){ return a + b.second; });
     r.unique_queries  = (int)query_freq.size();
@@ -888,53 +890,58 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     r.night_owl_pct   = 100.0 * night_cnt   / r.total_visits;
     r.weekend_pct     = 100.0 * weekend_cnt / r.total_visits;
     r.question_count  = question_cnt;
-    r.avg_query_words = r.total_searches > 0 ? (double)total_qwords / r.total_searches : 3.0;
+    r.avg_query_words = r.total_searches > 0 ? (double)total_qwords / r.total_searches : 3.0; //3 is a reasonable default for avg query words
     r.searches_per_day = r.total_searches / days_total;
     r.visits_per_day   = r.total_visits   / days_total;
     r.longest_query_words = longest_wc;
 
-    // Peak hour label
-    int peak_hr = (int)(std::max_element(r.hour_counts.begin(), r.hour_counts.end()) - r.hour_counts.begin());
+    //peak hour label
+    int peak_hr = (int)(std::max_element(r.hour_counts.begin(), r.hour_counts.end()) - r.hour_counts.begin()); //subtract begin to get index
     if      (peak_hr == 0)  r.peak_hour_label = "midnight";
     else if (peak_hr < 12)  r.peak_hour_label = std::to_string(peak_hr) + "am";
     else if (peak_hr == 12) r.peak_hour_label = "noon";
     else                    r.peak_hour_label = std::to_string(peak_hr - 12) + "pm";
 
-    // Peak month
+    //peak month
     static const std::string MONTHS[] = {"January","February","March","April","May","June","July","August","September","October","November","December"};
     int peak_mo = (int)(std::max_element(r.month_counts.begin(), r.month_counts.end()) - r.month_counts.begin());
     r.peak_month_label = MONTHS[peak_mo];
 
-    // Peak day
+    //peak day
     static const std::string DAYS[] = {"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"};
     int peak_dow = (int)(std::max_element(r.dow_counts.begin(), r.dow_counts.end()) - r.dow_counts.begin());
     r.peak_day_label = DAYS[peak_dow];
 
-    // Top searches (sorted by freq)
+    //top searches (sorted by freq)
     std::vector<std::pair<std::string,int>> sorted_q(query_freq.begin(), query_freq.end());
+    //a.second and b.second are the frequency counts for the queries, sort descending
     std::sort(sorted_q.begin(), sorted_q.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
+    //top searches are the first 10 of sorted_q
     r.top_searches = std::vector<std::pair<std::string,int>>(sorted_q.begin(),
         sorted_q.begin() + std::min((int)sorted_q.size(), 10));
 
-    // Top sites
+    //top sites
     std::vector<std::pair<std::string,int>> sorted_d(domain_freq.begin(), domain_freq.end());
-    // Remove google.com from top sites (it's the search engine)
+    //remove google.com from top sites
+    //p.first is the domain name, p.second is the frequency count for that domain
     sorted_d.erase(std::remove_if(sorted_d.begin(), sorted_d.end(),
         [](const auto& p){ return p.first == "google.com" || p.first.empty(); }), sorted_d.end());
     std::sort(sorted_d.begin(), sorted_d.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
 
     for (int i = 0; i < std::min((int)sorted_d.size(), 12); i++) {
-        const auto& [dom, cnt] = sorted_d[i];
+        //iterate through the top 12 domains, create a TopSite struct for each, and add to r.top_sites
+        const auto& [dom, cnt] = sorted_d[i]; //sorted_d[i] is a pair of domain and count
         TopSite ts;
         ts.domain = dom;
         ts.visits = cnt;
         auto it = DOMAIN_DB.find(dom);
-        if (it != DOMAIN_DB.end()) {
+        if (it != DOMAIN_DB.end()) { //DOMAIN_DB.end is the iterator to the end of the map, meaning the domain was not found
             ts.label    = it->second.label;
             ts.category = it->second.category;
             ts.color    = it->second.color;
         } else {
-            // Capitalize domain name
+            //here domain not found in DOMAIN_DB
+            //capitalize domain name
             ts.label    = dom;
             ts.category = "Other";
             ts.color    = "#4A5A8A";
@@ -942,39 +949,51 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         r.top_sites.push_back(ts);
     }
 
-    // Category breakdown (based on all queries joined)
+    //category breakdown (based on all queries joined)
     std::string all_q;
-    for (const auto& [q, _] : query_freq) all_q += " " + q;
-    all_q = to_lower(all_q);
+    for (const auto& [q, _] : query_freq) all_q += " " + q; //join all queries into one string
+    all_q = to_lower(all_q); //make lowercase
 
-    // Also score domains
+    //also score domains
     std::string all_domains_str;
-    for (const auto& [dom, cnt] : sorted_d) {
+    for (const auto& [dom, cnt] : sorted_d) { 
+        //for each domain in sorted_d, add to all_domains_str up to 10 times
+        //or add it cnt times, whichever smaller
         for (int k = 0; k < std::min(cnt, 10); k++) all_domains_str += " " + dom;
     }
 
     std::vector<std::pair<std::string,int>> cat_scores;
     for (const auto& [cat, kws] : SEARCH_CATS) {
+        //for each category, score it based on how many keywords appear in all_q and all_domains_str
         int score = 0;
         for (const auto& kw : kws) {
+            //for each keyword, count how many times it appears in all_q and all_domains_str
             size_t pos = 0;
             const std::string& haystack = all_q;
             while ((pos = haystack.find(kw, pos)) != std::string::npos) {
-                score++; pos += kw.size();
+                score++; 
+                pos += kw.size();
             }
         }
-        // Bonus from domain visits
-        for (const auto& ts : r.top_sites) {
-            if (ts.category == cat) score += ts.visits / 10;
+        //bonus from domain visits
+        for (const auto& ts : r.top_sites) {//iterate through top sites
+            //if current category is a top site category, add 10% of its visits to the score
+            if (ts.category == cat) {
+                score += ts.visits / 10;
+            }
         }
         cat_scores.push_back({cat, score});
     }
+
+    //sort categories by score descending
     std::sort(cat_scores.begin(), cat_scores.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
     r.category_breakdown = cat_scores;
 
-    // Search clusters (group top queries by theme)
-    // Simple: group top 30 queries by category
+    //search clusters (group top queries by theme)
+    //simple: group top 30 queries by category
     std::unordered_map<std::string, SearchCluster> cluster_map;
+    //initialize cluster_map with empty clusters for each category
+    //create icons
     for (const auto& [cat, _] : SEARCH_CATS) {
         SearchCluster sc;
         sc.theme = cat;
@@ -991,31 +1010,41 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         cluster_map[cat] = sc;
     }
 
+    //for ezch query in sorted_q find the best category for it and add to cluster
     for (const auto& [q, cnt] : sorted_q) {
         std::string ql = to_lower(q);
-        std::string best_cat = "News & Research";
+        std::string best_cat = "News & Research"; //default if no keywords match
         int best_score = 0;
+        //score each category by how many keywords appear in the query
         for (const auto& [cat, kws] : SEARCH_CATS) {
-            int score = 0;
+            int score = 0; //times the keywords appear in the query
+            //for each keyword in the category, check if it appears in the query
             for (const auto& kw : kws) {
                 if (ql.find(kw) != std::string::npos) score++;
             }
-            if (score > best_score) { best_score = score; best_cat = cat; }
+            if (score > best_score) { 
+                best_score = score; 
+                best_cat = cat; 
+            }
         }
-        auto& cl = cluster_map[best_cat];
-        if (cl.queries.size() < 4) cl.queries.push_back(q);
-        cl.total += cnt;
+        auto& cl = cluster_map[best_cat]; //get the cluster for the best category
+        if (cl.queries.size() < 4) { //only keep top 4 queries per cluster
+            cl.queries.push_back(q);
+        }
+        cl.total += cnt; //add the count of this query to the cluster total
     }
 
+    //for each cluster in cluster_map, if total > 0, add to r.clusters
     for (const auto& [_, sc] : cluster_map) {
         if (sc.total > 0) r.clusters.push_back(sc);
     }
+    //sort result clusters by total descending
     std::sort(r.clusters.begin(), r.clusters.end(), [](const auto& a, const auto& b){ return a.total > b.total; });
 
-    // TF-IDF search fingerprint
+    //TF-IDF search fingerprint
     r.tfidf_terms = compute_tfidf(query_freq, r.unique_queries);
 
-    // Cosine-similarity personality engine
+    //cosine-similarity personality engine
     int peak_hr_int = (int)(std::max_element(r.hour_counts.begin(), r.hour_counts.end())
                             - r.hour_counts.begin());
     r.personality = compute_personality_cosine(
@@ -1034,6 +1063,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
 //  JSON SERIALIZATION
 // ══════════════════════════════════════════════════════════
 
+//convert WrappedResult to JSON for output
 json result_to_json(const WrappedResult& r) {
     json j;
     j["total_visits"]      = r.total_visits;
@@ -1090,7 +1120,7 @@ json result_to_json(const WrappedResult& r) {
     }
     j["category_breakdown"] = cats;
 
-    // TF-IDF fingerprint words
+    //TF-IDF fingerprint words
     json tfidf = json::array();
     for (const auto& [term, score] : r.tfidf_terms) {
         json item; item["term"] = term; item["score"] = std::round(score * 100) / 100.0;
@@ -1120,9 +1150,10 @@ json result_to_json(const WrappedResult& r) {
 //  DEMO DATA
 // ══════════════════════════════════════════════════════════
 
+//generate a realistic demo history dataset for testing
 WrappedResult make_demo() {
     std::vector<HistoryEntry> entries;
-    // Simulate realistic Chrome history
+    //simulate realistic Chrome history
     struct SimEntry { std::string url; std::string title; int64_t base_h; int spread_h; };
     std::vector<SimEntry> templates = {
         {"https://leetcode.com/problems/", "LeetCode", 2, 3},
@@ -1143,10 +1174,12 @@ WrappedResult make_demo() {
         {"https://gradescope.com/", "Gradescope", 16, 4},
     };
 
-    int64_t base_usec = 1714521600LL * 1000000LL; // Apr 1 2025
+    int64_t base_usec = 1714521600LL * 1000000LL; //Apr 1 2025, the start of the demo history period
     srand(42);
+    //simulate 340 days of history, with 20-50 entries per day
     for (int day = 0; day < 340; day++) {
         int n_entries = 20 + rand() % 30;
+        //for each entry, pick a random template and generate a HistoryEntry with a timestamp based on the template's base hour and spread
         for (int k = 0; k < n_entries; k++) {
             const auto& tmpl = templates[rand() % templates.size()];
             HistoryEntry e;
@@ -1175,16 +1208,16 @@ int main() {
     httplib::Server svr;
     svr.set_payload_max_length(50 * 1024 * 1024); // 50 MB — handles large History.json files
 
-    // CORS
+    //CORS: allow all origins, methods, and headers for preflight requests
     svr.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin",  "*");
         res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         res.set_header("Access-Control-Allow-Headers", "Content-Type");
         return httplib::Server::HandlerResponse::Unhandled;
     });
-    svr.Options(".*", [](const httplib::Request&, httplib::Response& res) { res.status = 204; });
+    svr.Options(".*", [](const httplib::Request&, httplib::Response& res) { res.status = 204; }); //respond to OPTIONS preflight requests with 204 No Content
 
-    // POST /api/analyze
+    //POST /api/analyze
     svr.Post("/api/analyze", [](const httplib::Request& req, httplib::Response& res) {
         try {
             std::cerr << "DEBUG body size=" << req.body.size() 
@@ -1204,12 +1237,12 @@ int main() {
         }
     });
 
-    // GET /api/demo
+    //GET /api/demo
     svr.Get("/api/demo", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(result_to_json(make_demo()).dump(), "application/json");
     });
 
-    // GET /api/health
+    //GET /api/health
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(R"({"status":"ok","engine":"Browser DNA C++ v2.0"})", "application/json");
     });
