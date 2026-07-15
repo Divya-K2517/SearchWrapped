@@ -127,7 +127,8 @@ struct WrappedResult {
 struct DomainInfo { std::string label; std::string category; std::string color; };
 
 static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
-    //domain database, hardcoded for now but should be auto categorized in the future
+    //domain database
+    
     //career
     {"linkedin.com",          {"LinkedIn",       "Career",        "#0A66C2"}},
     {"careers.purdue.edu",    {"Purdue Careers",  "Career",       "#CEB888"}},
@@ -180,6 +181,8 @@ static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
 static const std::vector<std::pair<std::string, std::vector<std::string>>> SEARCH_CATS = {
     //search categories, hardcoded for now
     //matches keywords to a category
+    //categories taken from & inspired by: https://iabtechlab.com/standards/content-taxonomy/
+
     {"Job Hunting",      {"job","internship","career","resume","linkedin","salary","hiring","interview","glassdoor","offer","apply","position","recruiter","cover letter"}},
     {"Coding & Tech",    {"leetcode","algorithm","python","javascript","sql","api","code","programming","react","data structure","typescript","backend","frontend","system design","topological","binary","sort","tree","graph","recursion"}},
     {"School",           {"purdue","course","exam","grade","professor","gpa","assignment","credit","major","class","lecture","midterm","final","brightspace","piazza"}},
@@ -189,6 +192,16 @@ static const std::vector<std::pair<std::string, std::vector<std::string>>> SEARC
     {"Entertainment",    {"spotify","youtube","netflix","the weeknd","music","movie","show","concert","ticketmaster","album","song","artist","anime","game","stream"}},
     {"News & Research",  {"nytimes","news","study","research","history","explained","why","how does","what is","wiki","science","report","analysis","2024","2025"}},
     {"Navigation",       {"near me","directions","hours","address","open","closed","location","map","parking","transit","schedule","flight","uber","lyft"}},
+    {"Automotive",             {"car","vehicle","motorcycle","scooter","auto insurance","auto repair","auto parts","car culture","dash cam","road-side assistance","auto show","auto recall"}},
+    {"Personal Finance",       {"banking","insurance","investing","retirement","budget","credit score","taxes","financial planning","frugal living","personal debt","consumer banking"}},
+    {"Home & Garden",          {"garden","landscaping","home improvement","interior decorating","remodeling","appliance","home security","smart home","outdoor decorating"}},
+    {"Pets",                   {"dog","cat","veterinary","aquarium","pet adoption","bird","reptile","fish","large animals"}},
+    {"Real Estate",            {"apartment","mortgage","housing market","real estate listing","rent","property","hotel properties","vacation properties","land and farms"}},
+    {"Religion & Spirituality",{"christianity","islam","buddhism","hinduism","judaism","sikhism","spirituality","astrology","atheism","agnosticism"}},
+    {"Style & Fashion",        {"fashion trend","designer clothing","beauty","streetwear","makeup","personal care","high fashion","men's fashion","women's fashion"}},
+    {"Travel",                 {"flight","hotel","vacation","itinerary","travel destination","passport","travel accessories","travel preparation"}},
+    {"Family & Relationships", {"parenting","dating","marriage","divorce","eldercare","bereavement","single life","civil union"}},
+    {"Fine Art",               {"painting","sculpture","gallery","opera","ballet","art exhibit","costume","dance","digital arts","modern art","theater"}},
 };
 
 // ══════════════════════════════════════════════════════════
