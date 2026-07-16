@@ -5,6 +5,7 @@
 // Do NOT define CPPHTTPLIB_OPENSSL_SUPPORT — leaving it undefined disables TLS
 #include "../include/httplib.h"
 #include "../include/json.hpp"
+#include "../include/generated_domain_table.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -122,57 +123,16 @@ struct WrappedResult {
 
 // ══════════════════════════════════════════════════════════
 //  DOMAIN KNOWLEDGE BASE
+//
+//  PUBLIC_DOMAIN_DB (struct DomainInfo + the lookup table itself) now
+//  comes from generated_domain_table.h — a build-time-generated header
+//  cross-referencing the UT1 Blacklists (public, CC BY-SA, active
+//  successor to the defunct Shallalist) against a real domain-popularity
+//  ranking. See scripts/generate_domain_table.py for provenance and
+//  regeneration instructions. No runtime dependency on either source —
+//  same self-contained-header shape as before, just sourced publicly
+//  instead of hand-picked.
 // ══════════════════════════════════════════════════════════
-
-struct DomainInfo { std::string label; std::string category; std::string color; };
-
-static const std::unordered_map<std::string, DomainInfo> DOMAIN_DB = {
-    //domain database
-    
-    //career
-    {"linkedin.com",          {"LinkedIn",       "Career",        "#0A66C2"}},
-    {"careers.purdue.edu",    {"Purdue Careers",  "Career",       "#CEB888"}},
-    {"glassdoor.com",         {"Glassdoor",      "Career",        "#0CAA41"}},
-    {"indeed.com",            {"Indeed",         "Career",        "#2164F3"}},
-    {"handshake.com",         {"Handshake",      "Career",        "#E95234"}},
-    //school
-    {"purdue.brightspace.com",{"Brightspace",    "School",        "#CEB888"}},
-    {"sso.purdue.edu",        {"Purdue SSO",     "School",        "#9D7535"}},
-    {"purdue.edu",            {"Purdue",         "School",        "#CEB888"}},
-    {"piazza.com",            {"Piazza",         "School",        "#4285F4"}},
-    {"gradescope.com",        {"Gradescope",     "School",        "#009BDE"}},
-    //coding
-    {"leetcode.com",          {"LeetCode",       "Coding",        "#FFA116"}},
-    {"github.com",            {"GitHub",         "Coding",        "#24292E"}},
-    {"stackoverflow.com",     {"Stack Overflow", "Coding",        "#F48024"}},
-    {"replit.com",            {"Replit",         "Coding",        "#F26207"}},
-    {"codesandbox.io",        {"CodeSandbox",    "Coding",        "#151515"}},
-    {"docs.google.com",       {"Google Docs",    "Productivity",  "#4285F4"}},
-    //shopping
-    {"amazon.com",            {"Amazon",         "Shopping",      "#FF9900"}},
-    {"aeropostale.com",       {"Aeropostale",    "Shopping",      "#EC1C24"}},
-    {"us.shein.com",          {"SHEIN",          "Shopping",      "#E83E70"}},
-    {"etsy.com",              {"Etsy",           "Shopping",      "#F1641E"}},
-    {"pinterest.com",         {"Pinterest",      "Social",        "#E60023"}},
-    //social / Entertainment
-    {"youtube.com",           {"YouTube",        "Entertainment", "#FF0000"}},
-    {"instagram.com",         {"Instagram",      "Social",        "#E1306C"}},
-    {"reddit.com",            {"Reddit",         "Social",        "#FF4500"}},
-    {"tiktok.com",            {"TikTok",         "Social",        "#010101"}},
-    {"spotify.com",           {"Spotify",        "Entertainment", "#1DB954"}},
-    {"netflix.com",           {"Netflix",        "Entertainment", "#E50914"}},
-    {"nytimes.com",           {"NY Times",       "News",          "#000000"}},
-    {"theweeknd.com",         {"The Weeknd",     "Entertainment", "#8B0000"}},
-    {"ticketmaster.com",      {"Ticketmaster",   "Entertainment", "#026CDF"}},
-    //productivity
-    {"mail.google.com",       {"Gmail",          "Productivity",  "#EA4335"}},
-    {"calendar.google.com",   {"Calendar",       "Productivity",  "#4285F4"}},
-    {"google.com",            {"Google",         "Search",        "#4285F4"}},
-    //other
-    {"duosecurity.com",       {"Duo Auth",       "Security",      "#6BBE4E"}},
-    {"onboarding-us10.hr.cloud.sap",{"SAP HR",  "Work",          "#008FD3"}},
-    {"xo.store",              {"XO Store",       "Shopping",      "#8B0000"}},
-};
 
 // ══════════════════════════════════════════════════════════
 //  SEARCH CATEGORY KEYWORDS
@@ -502,7 +462,7 @@ std::vector<std::pair<std::string,double>> compute_tfidf(
 
     if (total_queries == 0) return {};
 
-    // Step 1: term frequencies across all queries (treat corpus as one doc per unique query)
+    //term frequencies across all queries (corpus is one doc per unique query)
     std::unordered_map<std::string, int> term_total_tf;  // sum of occurrences across corpus
     std::unordered_map<std::string, int> term_df;        // # queries containing this term
     int total_terms = 0;
@@ -522,7 +482,7 @@ std::vector<std::pair<std::string,double>> compute_tfidf(
 
     if (total_terms == 0) return {};
 
-    // Step 2: score each term
+    //score each term
     double N = (double)query_freq.size();
     std::vector<std::pair<std::string,double>> scored;
 
@@ -947,13 +907,13 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         TopSite ts;
         ts.domain = dom;
         ts.visits = cnt;
-        auto it = DOMAIN_DB.find(dom);
-        if (it != DOMAIN_DB.end()) { //DOMAIN_DB.end is the iterator to the end of the map, meaning the domain was not found
+        auto it = PUBLIC_DOMAIN_DB.find(dom);
+        if (it != PUBLIC_DOMAIN_DB.end()) { //PUBLIC_DOMAIN_DB.end is the iterator to the end of the map, meaning the domain was not found
             ts.label    = it->second.label;
             ts.category = it->second.category;
             ts.color    = it->second.color;
         } else {
-            //here domain not found in DOMAIN_DB
+            //here domain not found in PUBLIC_DOMAIN_DB
             //capitalize domain name
             ts.label    = dom;
             ts.category = "Other";
