@@ -205,7 +205,7 @@ def write_header(entries):
     lines.append("};")
     lines.append("")
 
-    with open("include/generated_domain_table.h", "w", encoding="utf-8") as f:
+    with open("../include/generated_domain_table.h", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
 
