@@ -105,6 +105,16 @@ CATEGORY_COLORS = {
 
 UT1_BASE = "https://raw.githubusercontent.com/olbat/ut1-blacklists/master/blacklists"
 
+# UT1 categorizes by filter-list intent, not always by what a site is
+# actually for. LinkedIn lands in "social_networks" (true, technically)
+# but functionally it's a career platform — worth a manual correction
+# for a handful of universally-recognized brands rather than silently
+# shipping a wrong category. This is NOT personal domain data — every
+# entry here is a globally recognized brand, kept intentionally short.
+MANUAL_OVERRIDES = {
+    "linkedin.com": "Job Hunting",
+}
+
 
 def fetch_popularity_ranking() -> dict:
     """rank (int, 1 = most popular) keyed by domain"""
@@ -169,7 +179,9 @@ def main():
             if d in seen_domains:
                 continue
             seen_domains.add(d)
-            entries.append((d, label_from_domain(d), category, color))
+            final_category = MANUAL_OVERRIDES.get(d, category)
+            final_color = CATEGORY_COLORS[final_category]
+            entries.append((d, label_from_domain(d), final_category, final_color))
             picked += 1
 
         print(f"  -> {len(ranked_hits)} recognizable candidates, picked {picked}")

@@ -165,6 +165,45 @@ static const std::vector<std::pair<std::string, std::vector<std::string>>> SEARC
 };
 
 // ══════════════════════════════════════════════════════════
+//  CATEGORY COLOR PALETTE
+//
+//  Canonical color per SEARCH_CATS category, used by Tier 2 (keyword
+//  cascade) and Tier 3 ("Other") when a domain has no Tier 1 hit in
+//  PUBLIC_DOMAIN_DB. Colors for the 9 categories PUBLIC_DOMAIN_DB
+//  already covers are kept identical to generate_domain_table.py's
+//  palette so a site's color doesn't jump depending on which tier
+//  classified it.
+// ══════════════════════════════════════════════════════════
+
+static const std::unordered_map<std::string, std::string> CATEGORY_COLORS = {
+    {"Job Hunting",             "#0A66C2"},
+    {"Coding & Tech",           "#FFA116"},
+    {"School",                  "#CEB888"},
+    {"Food & Nutrition",        "#FFD166"},
+    {"Health & Fitness",        "#00D4FF"},
+    {"Shopping",                "#FF9900"},
+    {"Entertainment",           "#E50914"},
+    {"News & Research",         "#4A5A8A"},
+    {"Navigation",               "#38BDF8"},
+    {"Automotive",               "#DC2626"},
+    {"Personal Finance",        "#0CAA41"},
+    {"Home & Garden",            "#84CC16"},
+    {"Pets",                     "#B08968"},
+    {"Real Estate",              "#6366F1"},
+    {"Religion & Spirituality", "#8B5CF6"},
+    {"Style & Fashion",          "#D946EF"},
+    {"Travel",                   "#14B8A6"},
+    {"Family & Relationships",  "#FF6B9D"},
+    {"Fine Art",                 "#C084FC"},
+    {"Other",                    "#6B7280"},
+};
+
+static std::string category_color(const std::string& cat) {
+    auto it = CATEGORY_COLORS.find(cat);
+    return it != CATEGORY_COLORS.end() ? it->second : CATEGORY_COLORS.at("Other");
+}
+
+// ══════════════════════════════════════════════════════════
 //  UTILITIES
 // ══════════════════════════════════════════════════════════
 
@@ -232,7 +271,113 @@ int count_words(const std::string& s) {
     return n;
 }
 
-// Microsecond timestamp → broken-down time
+//formats a bare domain into a display label, e.g. "leetcode.com" -> "Leetcode"
+//"cs-purdue.edu" -> "Cs Purdue". Skips common subdomain prefixes so
+//"us.shein.com" -> "Shein" rather than "Us". Used for Tier 2/3 sites
+//that have no hand-labeled name coming from PUBLIC_DOMAIN_DB.
+std::string label_from_domain(const std::string& domain) {
+    static const std::set<std::string> SUBDOMAIN_PREFIXES = {
+        "www","us","uk","ca","en","de","fr","m","app","shop","store","my"
+    };
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : domain) {
+        if (c == '.') { parts.push_back(cur); cur.clear(); }
+        else cur += c;
+    }
+    parts.push_back(cur);
+
+    size_t idx = 0;
+    if (parts.size() >= 3 && SUBDOMAIN_PREFIXES.count(to_lower(parts[0]))) idx = 1;
+    std::string root = idx < parts.size() ? parts[idx] : domain;
+    if (root.empty()) root = domain;
+
+    std::string label;
+    bool cap = true;
+    for (char c : root) {
+        if (c == '-' || c == '_') { label += ' '; cap = true; continue; }
+        label += cap ? (char)std::toupper((unsigned char)c) : c;
+        cap = false;
+    }
+    return label;
+}
+
+// ══════════════════════════════════════════════════════════
+//  TIER 2/3 DOMAIN CLASSIFICATION CASCADE
+//
+//  Runs only for domains PUBLIC_DOMAIN_DB (Tier 1) has no entry for.
+//
+//  Tier 2: split the hostname into tokens (leetcode.com -> "leetcode";
+//  cs-purdue.edu -> "cs","purdue") and combine them with every page
+//  title ever seen for that domain into one bag of text. Score that
+//  bag against the exact same SEARCH_CATS keyword-hit-count scorer
+//  already used for search-query categorization — one scoring
+//  function generalized across three input types (queries, hostnames,
+//  titles) instead of three separate ones. Highest-scoring category
+//  wins if it clears TIER2_MIN_HITS; otherwise the domain isn't
+//  confident enough to label and falls through to Tier 3.
+//
+//  Tier 3: category = "Other". No special logic — just what's left
+//  when neither tier above committed to an answer.
+// ══════════════════════════════════════════════════════════
+
+static const int TIER2_MIN_HITS = 2;
+
+// TLD/subdomain-prefix tokens that carry no category signal on their own
+static const std::set<std::string> HOSTNAME_NOISE = {
+    "com","net","org","www","co","io","edu","gov","app","us","uk","de","fr"
+};
+
+std::vector<std::string> tokenize_hostname(const std::string& domain) {
+    std::vector<std::string> tokens;
+    std::string cur;
+    for (char c : domain) {
+        if (std::isalnum((unsigned char)c)) {
+            cur += std::tolower((unsigned char)c);
+        } else {
+            if (cur.size() >= 2 && !HOSTNAME_NOISE.count(cur)) tokens.push_back(cur);
+            cur.clear();
+        }
+    }
+    if (cur.size() >= 2 && !HOSTNAME_NOISE.count(cur)) tokens.push_back(cur);
+    return tokens;
+}
+
+struct DomainClassification { std::string category; std::string color; };
+
+DomainClassification classify_domain(const std::string& domain, const std::string& title_bag) {
+    //takes in cleaned domain name and list of titles from that domain
+    std::string haystack = to_lower(title_bag);
+    //add domain tokens to haystack too, so "leetcode.com" + "Leetcode" title counts as 2 hits for Coding & Tech
+    for (const auto& tok : tokenize_hostname(domain)) {
+        haystack += " ";
+        haystack += tok;
+    }
+
+    std::string best_cat;
+    int best_score = 0;
+    //score each category by counting keyword hits in the haystack
+    for (const auto& [cat, kws] : SEARCH_CATS) {
+        int score = 0; //how many keywords from this category appear in the haystack
+        for (const auto& kw : kws) { 
+            //for each keyword, count how many times it appears in the haystack
+            size_t pos = 0;
+            while ((pos = haystack.find(kw, pos)) != std::string::npos) {
+                score++;
+                pos += kw.size();
+            }
+        }
+        if (score > best_score) { best_score = score; best_cat = cat; }
+    }
+
+    if (best_score >= TIER2_MIN_HITS) {
+        //return the best category and its canonical color
+        return {best_cat, category_color(best_cat)};
+    }
+    return {"Other", category_color("Other")}; //move to tier 3 for low-confidence domains
+}
+
+//microsecond timestamp → broken-down time
 struct BrokenTime { int year, month, hour, dow; }; // month 0-based, dow 0=Mon
 
 BrokenTime usec_to_broken(int64_t usec) {
@@ -901,6 +1046,8 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         [](const auto& p){ return p.first == "google.com" || p.first.empty(); }), sorted_d.end());
     std::sort(sorted_d.begin(), sorted_d.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
 
+    std::set<std::string> need_classification; //Tier 1 misses, to resolve via Tier 2/3 below
+
     for (int i = 0; i < std::min((int)sorted_d.size(), 12); i++) {
         //iterate through the top 12 domains, create a TopSite struct for each, and add to r.top_sites
         const auto& [dom, cnt] = sorted_d[i]; //sorted_d[i] is a pair of domain and count
@@ -913,14 +1060,39 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
             ts.category = it->second.category;
             ts.color    = it->second.color;
         } else {
-            //here domain not found in PUBLIC_DOMAIN_DB
-            //capitalize domain name
-            ts.label    = dom;
+            //Tier 1 miss — provisional label/category, resolved by the
+            //Tier 2/3 cascade just below once we've gathered this
+            //domain's page titles.
+            ts.label    = label_from_domain(dom);
             ts.category = "Other";
-            ts.color    = "#4A5A8A";
+            ts.color    = category_color("Other");
+            need_classification.insert(dom);
         }
         r.top_sites.push_back(ts);
     }
+
+    //Tier 2/3: for the handful of top-12 domains PUBLIC_DOMAIN_DB missed,
+    //gather a per-domain "bag of titles" — a second, lightweight pass
+    //over entries, but only accumulating text for domains that actually
+    //need it, not all unique domains in the history — then classify.
+    if (!need_classification.empty()) {
+        std::unordered_map<std::string, std::string> title_bag;
+        for (const auto& e : entries) {
+            if (e.title.empty() || !need_classification.count(e.domain)) continue;
+            std::string& bag = title_bag[e.domain];
+            if (bag.size() < 3000) { // cap per-domain bag size
+                bag += " ";
+                bag += e.title;
+            }
+        }
+        for (auto& ts : r.top_sites) {
+            if (!need_classification.count(ts.domain)) continue;
+            auto cls = classify_domain(ts.domain, title_bag[ts.domain]);
+            ts.category = cls.category;
+            ts.color    = cls.color;
+        }
+    }
+
 
     //category breakdown (based on all queries joined)
     std::string all_q;

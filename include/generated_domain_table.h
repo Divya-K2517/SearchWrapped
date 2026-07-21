@@ -274,7 +274,7 @@ static const std::unordered_map<std::string, DomainInfo> PUBLIC_DOMAIN_DB = {
     {"lequipe.fr", {"Lequipe", "Health & Fitness", "#00D4FF"}},
     {"libsyn.com", {"Libsyn", "Entertainment", "#E50914"}},
     {"lincolnfinancial.com", {"Lincolnfinancial", "Personal Finance", "#0CAA41"}},
-    {"linkedin.com", {"Linkedin", "Entertainment", "#E50914"}},
+    {"linkedin.com", {"Linkedin", "Job Hunting", "#0A66C2"}},
     {"littleleague.org", {"Littleleague", "Health & Fitness", "#00D4FF"}},
     {"logitechg.com", {"Logitechg", "Entertainment", "#E50914"}},
     {"lowes.com", {"Lowes", "Shopping", "#FF9900"}},
