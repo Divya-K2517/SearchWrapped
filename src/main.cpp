@@ -48,6 +48,7 @@ struct TopSite {
     std::string category;
     std::string label;   
     std::string color;
+    std::string tier;    // "public_table" | "keyword_match" | "other" — diagnostic, which tier classified this site
 };
 
 struct SearchCluster {
@@ -96,6 +97,13 @@ struct WrappedResult {
 
     // Sites
     std::vector<TopSite> top_sites;    // top 12
+
+    // Classification diagnostics — how many of top_sites were resolved by
+    // each tier of the domain classification cascade. Not shown in the
+    // Wrapped UI itself; useful for evaluating the cascade against real data.
+    int tier1_public_table = 0;
+    int tier2_keyword_match = 0;
+    int tier3_other = 0;
 
     // Searches
     std::vector<std::pair<std::string,int>> top_searches;
@@ -201,6 +209,35 @@ static const std::unordered_map<std::string, std::string> CATEGORY_COLORS = {
 static std::string category_color(const std::string& cat) {
     auto it = CATEGORY_COLORS.find(cat);
     return it != CATEGORY_COLORS.end() ? it->second : CATEGORY_COLORS.at("Other");
+}
+
+// ══════════════════════════════════════════════════════════
+//  SHARED KEYWORD SCORER
+//
+//  Counts occurrences of a keyword list inside a haystack, requiring a
+//  WORD BOUNDARY on both sides of each match — not plain substring
+//  search. Plain substring search let short keywords silently match
+//  inside unrelated words (Automotive's "car" inside "career", Coding &
+//  Tech's "api" inside "capital"), which barely showed up scoring
+//  curated search queries but became a real problem once Tier 2 started
+//  feeding it noisier hostname/title text.
+// ══════════════════════════════════════════════════════════
+
+int score_against_keywords(const std::string& haystack, const std::vector<std::string>& kws) {
+    int score = 0;
+    for (const auto& kw : kws) { //iterate through keywords
+        size_t pos = 0;
+        //until no more matches, find the next match of kw in haystack
+        //haystack is the text to search, kw is the keyword to find
+        while ((pos = haystack.find(kw, pos)) != std::string::npos) { //found a match
+            bool left_ok  = (pos == 0) || !std::isalnum((unsigned char)haystack[pos - 1]); //is the left side not alphanumeric/start of string
+            size_t end    = pos + kw.size();
+            bool right_ok = (end >= haystack.size()) || !std::isalnum((unsigned char)haystack[end]); //is the right side not alphanumeric/end of string
+            if (left_ok && right_ok) score++; //increment score if both sides are ok
+            pos += kw.size();
+        }
+    }
+    return score;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -343,12 +380,10 @@ std::vector<std::string> tokenize_hostname(const std::string& domain) {
     return tokens;
 }
 
-struct DomainClassification { std::string category; std::string color; };
+struct DomainClassification { std::string category; std::string color; std::string tier; };
 
 DomainClassification classify_domain(const std::string& domain, const std::string& title_bag) {
-    //takes in cleaned domain name and list of titles from that domain
     std::string haystack = to_lower(title_bag);
-    //add domain tokens to haystack too, so "leetcode.com" + "Leetcode" title counts as 2 hits for Coding & Tech
     for (const auto& tok : tokenize_hostname(domain)) {
         haystack += " ";
         haystack += tok;
@@ -356,28 +391,18 @@ DomainClassification classify_domain(const std::string& domain, const std::strin
 
     std::string best_cat;
     int best_score = 0;
-    //score each category by counting keyword hits in the haystack
     for (const auto& [cat, kws] : SEARCH_CATS) {
-        int score = 0; //how many keywords from this category appear in the haystack
-        for (const auto& kw : kws) { 
-            //for each keyword, count how many times it appears in the haystack
-            size_t pos = 0;
-            while ((pos = haystack.find(kw, pos)) != std::string::npos) {
-                score++;
-                pos += kw.size();
-            }
-        }
+        int score = score_against_keywords(haystack, kws);
         if (score > best_score) { best_score = score; best_cat = cat; }
     }
 
     if (best_score >= TIER2_MIN_HITS) {
-        //return the best category and its canonical color
-        return {best_cat, category_color(best_cat)};
+        return {best_cat, category_color(best_cat), "keyword_match"};
     }
-    return {"Other", category_color("Other")}; //move to tier 3 for low-confidence domains
+    return {"Other", category_color("Other"), "other"}; // Tier 3
 }
 
-//microsecond timestamp → broken-down time
+// Microsecond timestamp → broken-down time
 struct BrokenTime { int year, month, hour, dow; }; // month 0-based, dow 0=Mon
 
 BrokenTime usec_to_broken(int64_t usec) {
@@ -502,6 +527,7 @@ std::vector<HistoryEntry> parse_history(const json& root) {
             // ── Chrome BrowserHistory format ──────────────────────────
             if (item.contains("url"))   e.url   = item["url"].get<std::string>();
             if (item.contains("title")) e.title = item["title"].get<std::string>();
+            if (!e.url.empty()) e.domain = extract_domain(e.url);
             if (item.contains("time_usec")) {
                 e.time_usec = item["time_usec"].get<int64_t>();
                 auto bt = usec_to_broken(e.time_usec);
@@ -1046,7 +1072,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         [](const auto& p){ return p.first == "google.com" || p.first.empty(); }), sorted_d.end());
     std::sort(sorted_d.begin(), sorted_d.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
 
-    std::set<std::string> need_classification; //Tier 1 misses, to resolve via Tier 2/3 below
+    std::set<std::string> need_classification; // Tier 1 misses, to resolve via Tier 2/3 below
 
     for (int i = 0; i < std::min((int)sorted_d.size(), 12); i++) {
         //iterate through the top 12 domains, create a TopSite struct for each, and add to r.top_sites
@@ -1059,6 +1085,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
             ts.label    = it->second.label;
             ts.category = it->second.category;
             ts.color    = it->second.color;
+            ts.tier     = "public_table";
         } else {
             //Tier 1 miss — provisional label/category, resolved by the
             //Tier 2/3 cascade just below once we've gathered this
@@ -1066,6 +1093,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
             ts.label    = label_from_domain(dom);
             ts.category = "Other";
             ts.color    = category_color("Other");
+            ts.tier     = "other"; // provisional; overwritten below if Tier 2 hits
             need_classification.insert(dom);
         }
         r.top_sites.push_back(ts);
@@ -1090,7 +1118,15 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
             auto cls = classify_domain(ts.domain, title_bag[ts.domain]);
             ts.category = cls.category;
             ts.color    = cls.color;
+            ts.tier     = cls.tier;
         }
+    }
+
+    //tally the tier breakdown across top_sites, for diagnostics
+    for (const auto& ts : r.top_sites) {
+        if      (ts.tier == "public_table")   r.tier1_public_table++;
+        else if (ts.tier == "keyword_match")  r.tier2_keyword_match++;
+        else                                   r.tier3_other++;
     }
 
 
@@ -1109,17 +1145,8 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
 
     std::vector<std::pair<std::string,int>> cat_scores;
     for (const auto& [cat, kws] : SEARCH_CATS) {
-        //for each category, score it based on how many keywords appear in all_q and all_domains_str
-        int score = 0;
-        for (const auto& kw : kws) {
-            //for each keyword, count how many times it appears in all_q and all_domains_str
-            size_t pos = 0;
-            const std::string& haystack = all_q;
-            while ((pos = haystack.find(kw, pos)) != std::string::npos) {
-                score++; 
-                pos += kw.size();
-            }
-        }
+        //for each category, score it based on how many keywords appear in all_q
+        int score = score_against_keywords(all_q, kws);
         //bonus from domain visits
         for (const auto& ts : r.top_sites) {//iterate through top sites
             //if current category is a top site category, add 10% of its visits to the score
@@ -1162,11 +1189,7 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
         int best_score = 0;
         //score each category by how many keywords appear in the query
         for (const auto& [cat, kws] : SEARCH_CATS) {
-            int score = 0; //times the keywords appear in the query
-            //for each keyword in the category, check if it appears in the query
-            for (const auto& kw : kws) {
-                if (ql.find(kw) != std::string::npos) score++;
-            }
+            int score = score_against_keywords(ql, kws);
             if (score > best_score) { 
                 best_score = score; 
                 best_cat = cat; 
@@ -1237,10 +1260,18 @@ json result_to_json(const WrappedResult& r) {
         json item;
         item["domain"] = s.domain; item["visits"] = s.visits;
         item["label"]  = s.label;  item["category"] = s.category;
-        item["color"]  = s.color;
+        item["color"]  = s.color;  item["tier"] = s.tier;
         sites.push_back(item);
     }
     j["top_sites"] = sites;
+
+    // Diagnostic only — not used by the Wrapped UI. Shows how many of
+    // top_sites were resolved by each tier of the classification cascade.
+    j["classification_breakdown"] = {
+        {"tier1_public_table",  r.tier1_public_table},
+        {"tier2_keyword_match", r.tier2_keyword_match},
+        {"tier3_other",         r.tier3_other}
+    };
 
     json searches = json::array();
     for (const auto& [q, c] : r.top_searches) {
