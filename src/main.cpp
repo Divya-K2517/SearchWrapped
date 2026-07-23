@@ -1103,10 +1103,27 @@ WrappedResult analyze(const std::vector<HistoryEntry>& entries) {
     //gather a per-domain "bag of titles" — a second, lightweight pass
     //over entries, but only accumulating text for domains that actually
     //need it, not all unique domains in the history — then classify.
+    //
+    //Each UNIQUE title is added to the bag at most once per domain. A
+    //page visited 200 times ("Purdue Careers" being the browser tab
+    //title on every visit) would otherwise let its words dominate the
+    //score purely on visit count, drowning out a rarer but more
+    //specific title ("Internship Application" seen twice). Deduping by
+    //title caps that: recurrence of a *page* doesn't inflate its
+    //keyword weight, only the variety of distinct titles seen does.
     if (!need_classification.empty()) {
         std::unordered_map<std::string, std::string> title_bag;
+        //seen_titles[domain] = set of titles already added to the bag for that domain
+        std::unordered_map<std::string, std::set<std::string>> seen_titles; 
         for (const auto& e : entries) {
             if (e.title.empty() || !need_classification.count(e.domain)) continue;
+            //seen is the list of titles already added to the bag for this domain
+            auto& seen = seen_titles[e.domain];
+            if (seen.count(e.title)>0) { //title in seen
+                continue;
+            } else { //title not in seen
+                seen.insert(e.title);
+            }            
             std::string& bag = title_bag[e.domain];
             if (bag.size() < 3000) { // cap per-domain bag size
                 bag += " ";
