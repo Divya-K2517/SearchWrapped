@@ -1,4 +1,4 @@
-# Browser DNA
+# Search Wrapped
 
 *A self-contained C++ engine that turns your Chrome history into a data-driven personality profile.*
 
