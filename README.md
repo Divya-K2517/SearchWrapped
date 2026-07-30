@@ -12,9 +12,12 @@ screenshot/short GIF
 
 ## What It Does
 
-what the tool does (parses a Chrome/Google Takeout History.json, classifies browsing into categories, generates a narrative "personality" report)
-no LLM calls, no external APIs at runtime, everything is hand-built statistics and heuristics
-TF-IDF search fingerprinting with a blended IDF prior, and the three-tier domain classification cascade
+Browser DNA is a self-contained web server that parses a Chrome (or Google Takeout) `History.json` export and analyzes it to show what you browse, when you browse it, and how your habits break down by category. It includes browsing patterns by time of day and category, a search-query fingerprint, and a personality archetype match — all computed server-side by a from-scratch C++ analysis engine, with no LLM calls and no external API dependency at runtime.
+ 
+Two things distinguish it from a typical "wrapped"-style analytics script:
+ 
+- **A three-tier domain classification cascade.** Every domain in a user's history is categorized by first checking a 505-domain public reference table, then falling back to a keyword scorer that runs the same scoring function across three different input types — search queries, hostname tokens, and aggregated page titles — before finally, and honestly, labeling anything left over as "Other" rather than guessing.
+- **A TF-IDF search fingerprint and cosine-similarity personality engine.** Search queries are tokenized, stop-word filtered, and scored with a TF-IDF metric that blends each user's own query corpus against an embedded general-English frequency prior — surfacing the terms statistically unique to that person. Behavioral signals are then reduced to a 13-dimensional vector and matched via cosine similarity against 8 hand-tuned archetypes across 19 content categories, with a reported confidence percentage and runner-up "shadow" archetype.
 
 ---
 
