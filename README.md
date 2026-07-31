@@ -36,9 +36,9 @@ graph TD
     subgraph Input[" "]
         direction LR
         A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
-        B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
     end
  
+    B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
     C --> D["Analysis Engine<br/>analyze()"]
  
     D --> D1["Time-pattern analysis"]
@@ -52,8 +52,9 @@ graph TD
     D4 --> E
  
     E --> F["Frontend<br/>3D museum-gallery UI"]
-
-    style Input fill:none,stroke:none
+ 
+    classDef transparent fill:none,stroke:none;
+    class Input transparent
 ```
  
 
