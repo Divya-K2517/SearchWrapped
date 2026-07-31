@@ -32,12 +32,8 @@ C++17, cpp-httplib, nlohmann/json (backend, both header-only/no runtime deps), v
 Data follows a straightforward pipeline: a history export goes in, is cleaned/standardized, is analyzed through 4 main methods, and comes back out as one JSON response that the frontend renders into the 3D gallery.
  
 ```mermaid
-graph TD
-    subgraph Input[" "]
-        direction LR
-        A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
-    end
- 
+graph LR
+    A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
     B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
     C --> D["Analysis Engine<br/>analyze()"]
  
@@ -52,9 +48,6 @@ graph TD
     D4 --> E
  
     E --> F["Frontend<br/>3D museum-gallery UI"]
- 
-    classDef transparent fill:none,stroke:none;
-    class Input transparent
 ```
  
 
