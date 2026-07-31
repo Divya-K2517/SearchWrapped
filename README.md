@@ -33,8 +33,12 @@ Data follows a straightforward pipeline: a history export goes in, is cleaned/st
  
 ```mermaid
 graph TD
-    A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
-    B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
+    subgraph Input[" "]
+        direction LR
+        A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
+        B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
+    end
+ 
     C --> D["Analysis Engine<br/>analyze()"]
  
     D --> D1["Time-pattern analysis"]
