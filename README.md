@@ -52,6 +52,8 @@ graph TD
     D4 --> E
  
     E --> F["Frontend<br/>3D museum-gallery UI"]
+
+    style Input fill:none,stroke:none
 ```
  
 
