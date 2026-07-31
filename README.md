@@ -16,8 +16,8 @@ Browser DNA is a self-contained web server that parses a Chrome (or Google Takeo
  
 Two things distinguish it from a typical "wrapped"-style analytics script:
  
-- **A three-tier domain classification cascade.** Every domain in a user's history is categorized by first checking a 505-domain public reference table, then falling back to a keyword scorer that runs the same scoring function across three different input types — search queries, hostname tokens, and aggregated page titles — before finally, and honestly, labeling anything left over as "Other" rather than guessing.
-- **A TF-IDF search fingerprint and cosine-similarity personality engine.** Search queries are tokenized, stop-word filtered, and scored with a TF-IDF metric that blends each user's own query corpus against an embedded general-English frequency prior — surfacing the terms statistically unique to that person. Behavioral signals are then reduced to a 13-dimensional vector and matched via cosine similarity against 8 hand-tuned archetypes across 19 content categories, with a reported confidence percentage and runner-up "shadow" archetype.
+- **A three-tier domain classification cascade.** Every domain in a user's history is categorized by first checking a 505-domain public reference table, then falling back to a keyword scorer that runs the same scoring function across three different input types — search queries, hostname tokens, and aggregated page titles — before labeling anything left over as "Other".
+- **A TF-IDF search fingerprint and cosine-similarity personality engine.** Search queries are tokenized, stop-word filtered, and scored with a TF-IDF metric that blends each user's own query against an embedded general-English frequency prior, surfacing the terms statistically unique to that person. Behavioral signals are then reduced to a 13-dimensional vector and matched via cosine similarity against 8 hand-tuned archetypes across 19 content categories, with a reported confidence percentage and runner-up "shadow" archetype.
 
 ---
 
@@ -29,7 +29,27 @@ C++17, cpp-httplib, nlohmann/json (backend, both header-only/no runtime deps), v
 
 ## Architecture
 
-a diagram (ASCII or Mermaid) showing the pipeline end to end — History.json → parser → analysis engine (TF-IDF / cosine archetype engine / 3-tier domain classifier) → JSON API → 3D frontend.
+Data follows a straightforward pipeline: a history export goes in, is cleaned/standardized, is analyzed through 4 main methods, and comes back out as one JSON response that the frontend renders into the 3D gallery.
+ 
+```mermaid
+graph TD
+    A["Chrome / Google Takeout<br/>History.json export"] --> B["Frontend<br/>(file upload)"]
+    B -->|"POST /api/analyze"| C["Parser<br/>normalizes Chrome vs. Takeout format"]
+    C --> D["Analysis Engine<br/>analyze()"]
+ 
+    D --> D1["Time-pattern analysis"]
+    D --> D2["3-tier domain classifier"]
+    D --> D3["Search category scoring & clustering"]
+    D --> D4["TF-IDF fingerprint +<br/>cosine-similarity archetype matching"]
+ 
+    D1 --> E["JSON response"]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+ 
+    E --> F["Frontend<br/>3D museum-gallery UI"]
+```
+ 
 
 ---
 
