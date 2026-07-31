@@ -12,7 +12,7 @@ screenshot/short GIF
 
 ## What It Does
 
-Browser DNA is a self-contained web server that parses a Chrome (or Google Takeout) `History.json` export and analyzes it to show what you browse, when you browse it, and how your habits break down by category. It includes browsing patterns by time of day and category, a search-query fingerprint, and a personality archetype match — all computed server-side by a from-scratch C++ analysis engine, with no LLM calls and no external API dependency at runtime.
+Inspired by Spotfity's Spotify Wrapped, SearchWrapped is a self-contained web server that parses a Chrome (or Google Takeout) `History.json` export and analyzes it to show what you browse, when you browse it, and how your habits break down by category. It includes browsing patterns by time of day and category, a search-query fingerprint, and a personality archetype match — all computed server-side by a from-scratch C++ analysis engine, with no LLM calls and no external API dependency at runtime.
  
 Two things distinguish it from a typical "wrapped"-style analytics script:
  
@@ -53,11 +53,15 @@ graph LR
 
 ---
 
-## The Classification Cascade
+## The Categorization Cascade
 
-Tier 1 — public domain table, built offline from UT1 Blacklists cross-referenced against a real popularity ranking. 
-Tier 2 — a keyword scorer generalized across three input types (search queries, hostname tokens, and aggregated page titles) using one shared, word-boundary-aware function. 
-Tier 3 — honest fallback to "Other" when neither tier is confident.
+Every site a user visited needs a category, but no single method can label all of them reliably — so Categorization happens in three steps, each one only running if the step before it comes up empty:
+ 
+1. **Look it up.** Check the domain against a reference table of ~500 well-known sites (e.g. `amazon.com` → Shopping). A fast and accurate way to get the most popular domains categorized.
+2. **Read the context.** If the domain isn't in that table, look at its name and the titles of the pages the user visited within that domain, and match that text against a list of category keywords. This is what lets the system correctly label sites the reference table has never heard of, such as a university course portal, a personal job-search page, and so on.
+3. **Admit uncertainty.** If neither step finds a confident match, the domain is labeled "Other" instead of guessing.
+
+With a 3-tiered categorization system, well-known sites get instant, reliable labels, obscure ones still get classified using real context, and anything more ambiguous is reported honestly rather than hidden behind a wrong answer.
 
 ---
 
